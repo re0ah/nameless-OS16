@@ -33,19 +33,26 @@ execve:
 	call	fat12_find_entry
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
 	je		.end
+	call	save_interrupts
 	mov		si,		PROCESS_OFFSET
 	call	fat12_load_entry
 	mov		ax,		PROCESS_OFFSET
 	mov		ds,		ax
 	call	PROCESS_OFFSET:0x0000
+	cli
 	mov		ax,		KERNEL_OFFSET
 	mov		ds,		ax
+	call	restore_interrupts
+	sti
 	xor		ax,		ax	;normal state exit
 .end:
 	retn
 
+%include "vga.asm"
 %include "tty.asm"
 %include "fs.asm"
 %include "isr.asm"
+%include "string.asm"
+%include "random.asm"
 
 KERNEL_SIZE equ $

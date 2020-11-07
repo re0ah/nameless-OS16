@@ -25,47 +25,29 @@ PIT_COMMAND_PORT equ 0x43
 PIT_MODE3 equ 0x06
 PIT_RW4	  equ 0x30
 PIT_CONTROL_WORD_FORMAT equ PIT_MODE3 | PIT_RW4
-PIT_DEFAULT_FREQUANCY equ 1193182 ;that is 0x001234DE, 32bit value.
+PIT_DEFAULT_FREQUENCY equ 1193182 ;that is 0x001234DE, 32bit value.
 								;need to be careful with him
 
 pit_init:
+	mov		ax,		PIT_DEFAULT_FREQUENCY / 32
+	call	pit_set_frequency
+	retn
+
+pit_frequency dw PIT_DEFAULT_FREQUENCY / 32
+
+pit_set_frequency:
+;in: ax = frequency
+	mov		word[pit_frequency],	ax
+	push	ax
 	mov		al,		PIT_CONTROL_WORD_FORMAT
 	out		PIT_COMMAND_PORT,	al
-	mov		ax,		PIT_DEFAULT_FREQUANCY / 32
+	pop		ax
 	out		PIT_0_PORT,		al
 	mov		al,		ah
 	out		PIT_0_PORT,		al
 	retn
 
 pit_int:
-;	push	gs
-;	push	ds
-;	mov		ax,		KERNEL_OFFSET
-;	mov		ds,		ax
-;	mov		ax,		word[ds:pit_handler_segment]
-;	mov		gs,		ax
-;	mov		ax,		word[gs:pit_handler]
-;	pop		ds
-;	call	gs:ax
-;	pop		gs
 	mov		al,		PICM
 	out		PIC_EOI, al
 	iret
-
-pit_handler			dw void_func
-pit_handler_segment dw KERNEL_OFFSET
-
-void_func:
-	retn
-
-_interrupt_set_pit_handler:
-;in: cx = addr of func
-	push	ds
-	push	ds
-	mov		ax,		KERNEL_OFFSET
-	mov		ds,		ax
-	mov		word[ds:pit_handler], cx
-	pop		ax
-	mov		word[ds:pit_handler_segment], ax
-	pop		ds
-	retn

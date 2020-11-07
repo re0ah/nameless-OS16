@@ -1,55 +1,18 @@
 bits 16
 %include "kernel.inc"
-;in all that's functions implied that es = 0xB800
-VGA_BUFFER		equ 0xB800
-VGA_BUF_SIZE	equ 32768 ;bytes
-VGA_WIDTH		equ 80
-VGA_HEIGHT		equ 25
-VGA_CHAR_SIZE	equ 2 ;bytes
-VGA_LINE_SIZE	equ VGA_WIDTH * VGA_CHAR_SIZE
-VGA_PAGES		equ 8 ;page 0 for show, 1..7 for stored
-VGA_PAGE_NUM_CHARS equ VGA_WIDTH * VGA_HEIGHT ;2000 chars
-VGA_PAGE_SIZE	equ VGA_PAGE_NUM_CHARS * VGA_CHAR_SIZE ;4000 bytes
-
-;==================================COLORS======================================
-;struct of VGA_CHAR (2 bytes):
-	;low  byte: code of char
-	;high byte: 4 bits(low)  foreground color
-	;			4 bits(high) background color
-;==============================================================================
-VGA_BLACK		 equ 0x00 ;color: #00 00 00
-VGA_BLUE		 equ 0x01 ;color: #00 00 AA
-VGA_GREEN		 equ 0x02 ;color: #00 AA 00
-VGA_CYAN		 equ 0x03 ;color: #00 AA AA
-VGA_RED			 equ 0x04 ;color: #AA 00 00
-VGA_PURPLE		 equ 0x05 ;color: #AA 00 AA
-VGA_BROWN		 equ 0x06 ;color: #AA 55 00
-VGA_GRAY		 equ 0x07 ;color: #AA AA AA
-VGA_DARK_GRAY	 equ 0x08 ;color: #55 55 55
-VGA_LIGHT_BLUE	 equ 0x09 ;color: #55 55 FF
-VGA_LIGHT_GREEN	 equ 0x0A ;color: #55 FF 55
-VGA_LIGHT_CYAN	 equ 0x0B ;color: #55 FF FF
-VGA_LIGHT_RED	 equ 0x0C ;color: #FF 55 55
-VGA_LIGHT_PURPLE equ 0x0D ;color: #FF 55 FF
-VGA_YELLOW		 equ 0x0E ;color: #FF FF 55
-VGA_WHITE		 equ 0x0F ;color: #FF FF FF
-;==============================================================================
 tty_start:
 	mov		ax,		VGA_BUFFER
 	mov		es,		ax		;es - video segment now
 	mov		byte[vga_color], 0x07
 
-	call	clear_screen
+	call	vga_clear_screen
 
 	mov		si,		HELLO_MSG
 	mov		cx,		HELLO_MSG_SIZE
-	call	vga_print_ascii
+	call	tty_print_ascii
 
-	mov		word[vga_pos_cursor], VGA_LINE_SIZE
-	call	cursor_move
-	mov		word[tty_input_start], VGA_LINE_SIZE
-
-	call	print_path
+	call	tty_next_row
+	call	tty_print_path
 
 .input:
 	call	wait_keyboard_input
@@ -64,71 +27,12 @@ tty_start:
 	jmp		.input
 .not_backspace:
 	call	scancode_to_ascii
-	call	vga_putchar_ascii
+	call	tty_putchar_ascii
 
 	jmp		.input
 	retn
 
-clear_screen:
-;in:  
-;out: ax = 0x0720
-;	  di = 0
-;	  cx = 0
-;	  bx = word[vga_pos_cursor]
-;	  dx = 0x03D5
-	mov		ax,		0x0720 ;bg=black, fg=gray, char=' '
-	xor		di,		di
-	mov		cx,		VGA_PAGE_NUM_CHARS
-	rep		stosw	;ax -> es:di
-
-	mov		word[vga_pos_cursor], 0
-	call	cursor_move
-	retn
-
-CURSOR_DATA		equ	0x03D4	;this port get high byte cursor position
-CURSOR_OFFSET	equ	0x03D5	;this port get low  byte cursor position
-HIGH_BYTE_NOW	equ	0x0E	;next byte in CURSOR_OFFSET will be high
-LOW_BYTE_NOW	equ	0x0F	;next byte in CURSOR_OFFSET will be low
-cursor_move:
-;in:  
-;out: bx = word[vga_pos_cursor]
-;	  dx = 0x03D5
-;	  al = bh
-	mov		bx,		word[vga_pos_cursor]
-	shr		bx,		1	;div to VGA_CHAR_SIZE
-.without_get_pos_cursor:
-	mov		dx,		CURSOR_DATA
-	mov		al,		LOW_BYTE_NOW
-	out		dx,		al
-
-	inc		dx	;CURSOR_OFFSET
-	mov		al,		bl
-	out		dx,		al
-
-	dec		dx	;CURSOR_DATA
-	mov		al,		HIGH_BYTE_NOW
-	out		dx,		al
-	
-	inc		dx	;CURSOR_OFFSET
-	mov		al,		bh
-	out		dx,		al
-	retn
-
-cursor_hide:    
-;in:  
-;out: bx = word[vga_pos_cursor]
-;     dx = 0x03D5
-;     al = bh
-	mov     dx,     CURSOR_DATA
-	mov     al,     0x0A
-	out     dx,     al
-
-	inc     dx  ;CURSOR_OFFSET
-	mov     al,     0x20
-	out     dx,     al
-	retn
-
-vga_putchar_ascii:
+tty_putchar_ascii:
 ;in:  al = ASCII
 ;out: ax = vga_char (al = ASCII, ah = color)
 ;	  bx = word[vga_pos_cursor]
@@ -138,16 +42,11 @@ vga_putchar_ascii:
 	mov		bx,		word[vga_pos_cursor]
 	mov		word[es:bx],	ax
 	add		word[vga_pos_cursor], VGA_CHAR_SIZE
-	call	cursor_move
+	call	vga_cursor_move
 .end:
 	retn
 
-;vga_char_to_ascii:
-;in: ax = vga_char (al = ASCII, ah = color)
-;	retn
-;just read al, why need this function?
-
-vga_print_ascii:
+tty_print_ascii:
 ;in:  si = ptr to str
 ;	  cx = len of str
 ;out: si = end of str
@@ -156,11 +55,11 @@ vga_print_ascii:
 ;	  bx = word[vga_pos_cursor]
 .lp:
 	lodsb	;al <- ds:si
-	call	vga_putchar_ascii
+	call	tty_putchar_ascii
 	loop	.lp
 	retn
 
-vga_next_row:
+tty_next_row:
 ;in:  
 ;out: al = bh
 ;	  bx = word[vga_pos_cursor]
@@ -184,10 +83,10 @@ vga_next_row:
 	mov		word[vga_pos_cursor],	ax
 	mov		word[tty_input_start],	ax
 	
-	call	cursor_move
+	call	vga_cursor_move
 	retn
 
-get_vga_input_ascii:
+get_tty_input_ascii:
 ;in:  di = addr where save ascii
 ;	  es = segment where save ascii
 ;out: si = str
@@ -224,7 +123,7 @@ tty_push_enter:
 	mov		ax,		STACK_OFFSET
 	mov		es,		ax
 	mov		di,		sp
-	call	get_vga_input_ascii
+	call	get_tty_input_ascii
 	mov		ax,		VGA_BUFFER
 	mov		es,		ax
 
@@ -238,6 +137,7 @@ tty_push_enter:
 	call	str_to_fat12_filename
 	pop		ds
 	pop		es
+	add		sp,		0x400	;free stack
 
 	mov		si,		FAT12_STR
 	call	execve
@@ -249,20 +149,19 @@ tty_push_enter:
 ;.lp:
 ;	mov		al,		byte[ds:si]
 ;	inc		si
-;	call	vga_putchar_ascii
+;	call	tty_putchar_ascii
 ;	loop	.lp
 ;	mov		ax,		KERNEL_OFFSET
 ;	mov		ds,		ax
-	call	vga_next_row
+	call	tty_next_row
 	mov		si,		BAD_COMMAND_MSG
 	mov		cx,		BAD_COMMAND_MSG_SIZE
-	call	vga_print_ascii
+	call	tty_print_ascii
 .execve_success:
-	add		sp,		0x400	;free stack
 
 .exit:
-	call	vga_next_row
-	call	print_path
+	call	tty_next_row
+	call	tty_print_path
 	retn
 
 tty_push_backspace:
@@ -274,11 +173,11 @@ tty_push_backspace:
 	mov		ah,		byte[vga_color]
 	mov		bx,		word[vga_pos_cursor]
 	mov		word[es:bx],	ax
-	call	cursor_move
+	call	vga_cursor_move
 .exit:
 	retn
 
-print_path:
+tty_print_path:
 	mov		si,		pre_path_now
 	inc		si
 	mov		byte[si],	'\'
@@ -288,86 +187,17 @@ print_path:
 	mov		byte[si],	' '
 	mov		si,		pre_path_now
 	mov		cx,		5
-	call	vga_print_ascii
+	call	tty_print_ascii
 	mov		cx,		10
 	add		word[tty_input_start], cx
 	retn
 
-str_to_fat12_filename:
-;in:  si = str (in format name.ext or name (in this case will add BIN as ext))
-;	  cx = len
-;	if have not ext then add ext as BIN
-;out: si = FAT12 name
-;if cx > 8, then cx = 8
-	cmp		cx,		FAT12_STRLEN_WITHOUT_EXT
-	jle		.check_strlen
-	mov		cx,		FAT12_STRLEN_WITHOUT_EXT
-.check_strlen:
-;cp data input to FAT12_STR
-	mov		ax,		cx
-	mov		bx,		FAT12_STRLEN
-	sub		bx,		cx
-	mov		di,		FAT12_STR
-	mov		cx,		FAT12_STRLEN_WITHOUT_EXT 
-	rep		movsb	;ds:si -> es:di
-
-	mov		si,		FAT12_STR_ONLY_BIN
-	mov		cx,		bx
-	add		si,		ax
-	mov		di,		FAT12_STR
-	add		di,		ax
-	push	ds
-	mov		ax,		KERNEL_OFFSET
-	mov		ds,		ax
-	rep		movsb	;ds:si -> es:di
-
-	mov		si,		FAT12_STR
-	mov		di,		FAT12_STRLEN_WITHOUT_EXT
-	call	str_to_caps
-	pop		ds
-
-	retn
-
-str_to_caps:
-;in:  si = str
-;	  di = len
-;out: si = caps str
-	add		di,		si
-.lp:
-	mov		al,		byte[ds:di]
-	call	char_to_caps
-	mov		byte[ds:di],	al
-	dec		di
-	cmp		di,		si
-	jge		.lp
-	retn
-
-char_to_caps:
-;in:  al = ascii
-;out: al = caps ascii
-	cmp		al,		'a'
-	jnge	.end
-	cmp		al,		'z'
-	jnle	.end
-	and		al,		0xDF
-.end:
-	retn
-
-HELLO_MSG db "Hello to tty, username"
+HELLO_MSG db "namelessOS16 v [3]"
 	HELLO_MSG_SIZE equ $-HELLO_MSG
 
 BAD_COMMAND_MSG db "command not found"
 	BAD_COMMAND_MSG_SIZE equ $-BAD_COMMAND_MSG
 
-FAT12_STR db 0x20, 0x20, 0x20, 0x20, 0x20, 0x20
-		  db 0x20, 0x20, 0x20, 0x20, 0x20
-	FAT12_STRLEN equ $-FAT12_STR
-	FAT12_STRLEN_WITHOUT_EXT equ FAT12_STRLEN - 3
-	FAT12_EXT equ FAT12_STR + 8
-FAT12_STR_ONLY_BIN	db "        BIN"
-
-vga_pos_cursor  dw 0
-vga_color	    db 0
 tty_input_start dw 0
 pre_path_now	db '['	;dont touch!
 path_now		times 83 db 0 ;80 on path and 3 to "]: "

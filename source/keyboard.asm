@@ -147,29 +147,11 @@ wait_keyboard_input:
 ;out: al = scancode
 	jmp		.wait_in
 .wait:
-	hlt
+	;hlt
 .wait_in:
 	cmp		byte[kb_buf_pos],	0
 	je		.wait
 	call	pop_kb_buf
-	retn
-
-scancode_to_ascii:
-;in:  al = scancode
-;out: al = ascii
-	cmp		al,		0x53
-	ja		.not_printable
-	mov		bl,		al
-	xor		bh,		bh
-	add		bx,		SCANCODE_SET
-	mov		al,		byte[bx]
-	call	if_caps
-	jcxz	.caps_not_set
-	call	char_to_caps
-.caps_not_set:
-	retn
-.not_printable:
-	xor		al,		al
 	retn
 
 if_caps:

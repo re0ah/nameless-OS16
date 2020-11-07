@@ -2,40 +2,55 @@ bits 16
 %include "../source/syscall.inc"
 
 DISK_BUFFER equ 0x6000
-VGA_BUFFER	equ 0xB800
 
 ls:
-	mov		bx,		SYSCALL_NEXT_ROW
+	mov		bx,		SYSCALL_TTY_NEXT_ROW
 	int		0x20
 	mov     bx,     SYSCALL_FAT12_READ_ROOT
 	int     0x20
 	mov		ax,		DISK_BUFFER
 	mov		fs,		ax
-;	xor		bx,		bx
-	mov		bx,		32
+	mov		bx,		DIR_ENTRY_SIZE 
 	jmp		.lp_in
 .lp:
 	push	bx
 	mov		si,		COMMA
-	mov		cx,		2
-	mov		bx,		SYSCALL_PRINT_ASCII
+	mov		cx,		COMMA_SIZE
+	mov		bx,		SYSCALL_TTY_PRINT_ASCII
 	int		0x20
 	pop		bx
 .lp_in:
 	mov		si,		bx
-	mov		di,		FAT12
+	mov		cx,		bx
+	add		cx,		FAT12_SIZE
+	mov		di,		FAT12_FNAME
 .cp_fname:
 	mov		al,		byte[fs:si]
+	cmp		al,		' '
+	je		.if_space
 	mov		byte[ds:di], al
-	inc		si
 	inc		di
-	cmp		di,		FAT12_END
+	jmp		.if_not_space
+.if_space:
+	inc		si
+	mov		al, 	byte[fs:si]
+	cmp		al,		' '
+	je		.if_space2
+	mov		al,		'.'
+	mov		byte[ds:di], al
+	inc		di
+	jmp		.if_space2
+.if_not_space:
+	inc		si
+.if_space2:
+	cmp		si,		cx
 	jne		.cp_fname
 
 	push	bx
-	mov		si,		FAT12
-	mov		cx,		11
-	mov		bx,		SYSCALL_PRINT_ASCII
+	mov		si,		FAT12_FNAME
+	mov		cx,		di
+	sub		cx,		FAT12_FNAME
+	mov		bx,		SYSCALL_TTY_PRINT_ASCII
 	int		0x20
 	pop		bx
 	
@@ -46,10 +61,10 @@ ls:
 	
 	retf
 
-FAT12 db "           "
+FAT12_FNAME db "           "
 	FAT12_END equ $
+	FAT12_SIZE equ $ - FAT12_FNAME
 COMMA db ", "
-FAT12_FULLNAME_SIZE equ 11
-NUM_OF_ENTRIES_ROOT_DIR equ 224
+	COMMA_SIZE equ $ - COMMA
+	
 DIR_ENTRY_SIZE equ 32 ;in bytes
-ROOT_DIR_SIZE equ NUM_OF_ENTRIES_ROOT_DIR * DIR_ENTRY_SIZE
