@@ -53,10 +53,26 @@ tty_print_ascii:
 ;	  cx = 0
 ;	  ax = vga_char of last symbol in si (al = ASCII, ah = color)
 ;	  bx = word[vga_pos_cursor]
+;.lp:
+;	lodsb	;al <- ds:si
+;	call	tty_putchar_ascii
+;	loop	.lp
+	mov		bx,		word[vga_pos_cursor]
+	shl		cx,		1
+	add		cx,		bx	;end
+	mov		ah,		byte[vga_color]
 .lp:
-	lodsb	;al <- ds:si
-	call	tty_putchar_ascii
-	loop	.lp
+	mov		al,		byte[ds:si]
+	test	al,		al
+	je		.end
+	mov		word[es:bx],	ax
+	add		bx,		2
+	inc		si
+	cmp		bx,		cx
+	jne		.lp
+.end:
+	mov		word[vga_pos_cursor],	cx
+	call	vga_cursor_move
 	retn
 
 tty_next_row:
@@ -69,7 +85,7 @@ tty_next_row:
 	mov		ax,		word[vga_pos_cursor]
 	mov		bl,		160
 	div		bl
-	and		ax,		0x00FF
+	xor		ah,		ah
 
 	inc		ax
 
@@ -82,7 +98,7 @@ tty_next_row:
 
 	mov		word[vga_pos_cursor],	ax
 	mov		word[tty_input_start],	ax
-	
+
 	call	vga_cursor_move
 	retn
 
@@ -91,10 +107,6 @@ get_tty_input_ascii:
 ;	  es = segment where save ascii
 ;out: si = str
 ;	  cx = str len
-;vga_pos_cursor  dw 0
-;vga_color	    db 0
-;tty_input_start dw 0
-;path_now		db 0
 	push	ds
 
 	mov		cx,		word[vga_pos_cursor]
@@ -192,7 +204,7 @@ tty_print_path:
 	add		word[tty_input_start], cx
 	retn
 
-HELLO_MSG db "namelessOS16 v [3]"
+HELLO_MSG db "namelessOS16 v 4"
 	HELLO_MSG_SIZE equ $-HELLO_MSG
 
 BAD_COMMAND_MSG db "command not found"

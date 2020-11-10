@@ -111,7 +111,7 @@ fat12_find_entry:
 	
 	xor		ax,		ax
 	xor		di,		di
-.next_entry:	
+.next_entry:
 	mov		si,		bx
 	mov		cx,		FAT12_FULLNAME_SIZE 
 	rep		cmpsb	;ds:si, es:di
@@ -127,46 +127,66 @@ fat12_find_entry:
 	pop		es
 	retn
 
+read_fat:
+	push	es
+	mov		ax,		DISK_BUFFER
+	mov		es,		ax
+
+	mov		ax,		0x0001	;1st sector of 1st FAT
+	call	l2hts
+;https://en.wikipedia.org/wiki/INT_13H
+;	mov		ah,		0x02	;AH: BIOS function read sectors from drive
+;	mov		al,		0x09	;AL: Sectors To Read Count
+	mov		ax,		0x0209
+	;CH		Cylinder
+	;CL		Sector
+	;DH		Head
+	;DL		Drive
+	xor		bx,		bx
+	;Results CF Set On Error, Clear If No Error
+	stc
+	int		0x13
+
+	pop		es
+	retn
+
+STRTR db "           "
+
 fat12_load_entry:
 ;in:  DISK_BUFFER:ax = ptr on fat12 entry
-;	  si = LOAD ADDR
+;	  es:si = LOAD PTR
 ;out: 
-	mov		word[pointer],	0
-	push	es
+	mov		word[ds:pointer],	si
 	mov		bx,		ax
 	mov		ax,		DISK_BUFFER
 	mov		gs,		ax
-	mov		ax,		word[gs:bx+0x1A]	;1st cluster (26st byte from
-													;start of entry)
-	mov		word[cluster],	ax
+	mov		ax,		word[gs:bx+26]	;1st cluster (26st byte from
+												 ;start of entry)
+	mov		word[ds:cluster],	ax
+	pusha
+	call	read_fat
+	popa
 ;FAT cluster 0 = media descriptor = 0F0h
 ;FAT cluster 1 = filler cluster = 0FFh
 ;Cluster start = ((cluster number) - 2) * SectorsPerCluster + START_USER_DATA
 ;              = (cluster number) + 31
 ;load FAT from disk
 .load_file_sector:
-	mov		ax,		word[cluster]
+	mov		ax,		word[ds:cluster]
 	add		ax,		31
 	call	l2hts
-	mov		ax,		si
-	mov		es,		ax
-	mov		bx,		word[pointer]
+	mov		bx,		word[ds:pointer]
 	mov		ax,		0x0201
 	stc
 	int		0x13
-
-	pop		es		
-	retn
 
 	jnc		.calculate_next_cluster
 
 	call	reset_floppy		;reset floppy and retry
 	jmp		.load_file_sector
-
-	;FAT12 cluster value stored in 12 bits, so do bit mask 0x0FFF
 .calculate_next_cluster:
 ;FAT12 element 12 bit long. Need mul to 1.5
-	mov		si,		word[cluster]
+	mov		si,		word[ds:cluster]
 	mov		cx,		si
 	and		cx,		1		;odd or even
 	mov		bx,		si
@@ -174,24 +194,35 @@ fat12_load_entry:
 	add		si,		bx
 	mov		ax,		word[gs:si]
 
-	jcxz	.even
+	;pusha
+	;push	es
+	;mov		bx,		VGA_BUFFER
+	;mov		es,		bx
+	;mov		si,		STRTR
+	;mov		bx,		SYSCALL_UINT_TO_ASCII
+	;int		0x20
+	;mov		bx,		SYSCALL_TTY_PRINT_ASCII
+	;int		0x20
+;	mov		bx,		SYSCALL_TTY_PUTCHAR_ASCII
+;	mov		al,		' '
+;	int		0x20
+;	pop		es
+;	popa
 
+	jcxz	.even
 .odd:
 	shr		ax,		4		;shift first 4 bits (they belong to another entry)
 .even:
 	and		ax,		0x0FFF
-
 .next_cluster_cont:
-	mov		word[cluster],	ax	;store cluster
+	mov		word[ds:cluster],	ax	;store cluster
 
-	cmp		ax,		0x0FF8		;FF8h = end of file marker in FAT12
+	cmp		ax,		0x0FF8		;0xFF8..0xFFF = end of file marker in FAT12
 	jae		.exit
 
-	add		word[pointer],	BYTES_PER_SECTOR
+	add		word[ds:pointer],	BYTES_PER_SECTOR
 	jmp		.load_file_sector
-
 .exit:
-	pop		es
 	retn
 
 reset_floppy:
@@ -200,7 +231,7 @@ reset_floppy:
 	push	ax
 	push	dx
 	xor		ax,		ax
-	xor		dl,		dl
+	xor		dx,		dx
 	stc
 	int		0x13
 	pop		dx

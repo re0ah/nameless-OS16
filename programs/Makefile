@@ -1,7 +1,7 @@
 AS = nasm
 ASFLAGS = -f bin
 
-OBJECTS = cls.bin dir.bin fm.bin ls.bin pwd.bin snake.bin date.bin
+OBJECTS = cls.bin dir.bin fm.bin ls.bin pwd.bin snake.bin vsnake.bin date.bin
 
 all: $(OBJECTS)
 

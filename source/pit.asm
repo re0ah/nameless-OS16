@@ -29,6 +29,7 @@ PIT_DEFAULT_FREQUENCY equ 1193182 ;that is 0x001234DE, 32bit value.
 								;need to be careful with him
 
 pit_init:
+;just set frequency of PIT
 	mov		ax,		PIT_DEFAULT_FREQUENCY / 32
 	call	pit_set_frequency
 	retn

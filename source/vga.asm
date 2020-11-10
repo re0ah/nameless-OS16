@@ -64,6 +64,33 @@ vga_clear_screen:
 	call	vga_cursor_move
 	retn
 
+vga_page_now db 0
+vga_page_set:
+;in: al=page
+	mov		ah,		0x05
+	int		0x10
+	retn
+
+vga_page_up:
+	mov		al,		byte[vga_page_now]
+	test	al,		al
+	je		.page_top
+	dec		al
+	mov		byte[vga_page_now],	al
+	call	vga_page_set
+.page_top:
+	retn
+
+vga_page_down:
+	mov		al,		byte[vga_page_now]
+	cmp		al,		VGA_PAGES - 1
+	je		.page_top
+	inc		al
+	mov		byte[vga_page_now],	al
+	call	vga_page_set
+.page_top:
+	retn
+
 vga_cursor_move:
 ;in:  
 ;out: bx = word[vga_pos_cursor]

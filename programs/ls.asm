@@ -10,18 +10,18 @@ ls:
 	int     0x20
 	mov		ax,		DISK_BUFFER
 	mov		fs,		ax
-	mov		bx,		DIR_ENTRY_SIZE 
+	mov		dx,		DIR_ENTRY_SIZE 
 	jmp		.lp_in
 .lp:
-	push	bx
+	push	dx
 	mov		si,		COMMA
 	mov		cx,		COMMA_SIZE
 	mov		bx,		SYSCALL_TTY_PRINT_ASCII
 	int		0x20
-	pop		bx
+	pop		dx
 .lp_in:
-	mov		si,		bx
-	mov		cx,		bx
+	mov		si,		dx
+	mov		cx,		dx
 	add		cx,		FAT12_SIZE
 	mov		di,		FAT12_FNAME
 .cp_fname:
@@ -46,15 +46,16 @@ ls:
 	cmp		si,		cx
 	jne		.cp_fname
 
-	push	bx
+	push	dx
 	mov		si,		FAT12_FNAME
 	mov		cx,		di
 	sub		cx,		FAT12_FNAME
 	mov		bx,		SYSCALL_TTY_PRINT_ASCII
 	int		0x20
-	pop		bx
+	pop		dx
 	
-	add     bx,     DIR_ENTRY_SIZE * 2 ;to next entry
+	add     dx,     DIR_ENTRY_SIZE
+	mov		bx,		dx
 	mov		al,		byte[fs:bx]
 	test	al,		al
 	jne		.lp

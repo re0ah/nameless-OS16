@@ -1,5 +1,7 @@
-divinder_int_to_ascii dw 10
 int_to_ascii:
+;in: ax=int 
+;	 si=ptr on str
+;out:si=ascii str from number
 	cmp		ax,		0
 	jnl		.not_neg_num
 	neg		ax
@@ -10,7 +12,11 @@ int_to_ascii:
 	call	uint_to_ascii
 	retn
 
+divinder_int_to_ascii dw 10
 uint_to_ascii:
+;in: ax=uint 
+;	 si=ptr on str
+;out:si=ascii str from number
 	push	si
 	mov		di,		num_to_ascii_buf
 .lp:

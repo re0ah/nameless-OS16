@@ -5,19 +5,28 @@ PIC_EOI				equ	0x20	;end of interrupt code
 %include "pit.asm"
 %include "keyboard.asm"
 
-;systemcalls
+ISR_ADDR_PIT_FUNC		  equ 0x0020
+ISR_ADDR_PIT_SEGMENT	  equ 0x0022
+
+ISR_ADDR_KEYBOARD_FUNC	  equ 0x0024
+ISR_ADDR_KEYBOARD_SEGMENT equ 0x0026
+
+ISR_ADDR_SYSCALL_FUNC	  equ 0x0080 ;int 0x20 
+ISR_ADDR_SYSCALL_SEGMENT  equ 0x0082
 load_isr:
+;init devices and set isr function and segment, set syscall
 	cli
 	call	pit_init
 	call	keyboard_init
 	xor		ax,		ax
 	mov		gs,		ax
-	mov		word[gs:0x0020],	pit_int
-	mov		word[gs:0x0022],	KERNEL_OFFSET
-	mov		word[gs:0x0024],	keyboard_int
-	mov		word[gs:0x0026],	KERNEL_OFFSET
-	mov		word[gs:0x0080],	syscall
-	mov		word[gs:0x0082],	KERNEL_OFFSET
+	mov		ax,		KERNEL_OFFSET
+	mov		word[gs:ISR_ADDR_PIT_FUNC],			pit_int
+	mov		word[gs:ISR_ADDR_PIT_SEGMENT],		ax
+	mov		word[gs:ISR_ADDR_KEYBOARD_FUNC],	keyboard_int
+	mov		word[gs:ISR_ADDR_KEYBOARD_SEGMENT],	ax
+	mov		word[gs:ISR_ADDR_SYSCALL_FUNC],		syscall
+	mov		word[gs:ISR_ADDR_SYSCALL_SEGMENT],	ax
 	sti
 	retn
 
@@ -26,40 +35,70 @@ pit_interrupt_segment dw KERNEL_OFFSET
 keyboard_interrupt_handler dw keyboard_int
 keyboard_interrupt_segment dw KERNEL_OFFSET
 save_interrupts:
+;save current PIT and keyboard interrupt ISR function & segment
+;in variable's above
 	pusha
-	xor		ax,		ax
-	mov		gs,		ax
-	mov		ax,		word[gs:0x0020]
-	mov		word[pit_interrupt_handler], ax
-	mov		ax,		word[gs:0x0022]
-	mov		word[pit_interrupt_segment], ax
-	mov		ax,		word[gs:0x0024]
-	mov		word[keyboard_interrupt_handler], ax
-	mov		ax,		word[gs:0x0026]
-	mov		word[keyboard_interrupt_segment], ax
+	push	es
+	push	ds
+
+	mov		ax,		ds
+	mov		es,		ax
+	xor		ax,		ax	;ISR segment
+	mov		ds,		ax
+	mov		si,		ISR_ADDR_PIT_FUNC
+	mov		di,		pit_interrupt_handler
+	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
+	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
+	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
+	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
+	;mov		ax,		word[gs:0x0020]
+	;mov		word[pit_interrupt_handler], ax
+	;mov		ax,		word[gs:0x0022]
+	;mov		word[pit_interrupt_segment], ax
+	;mov		ax,		word[gs:0x0024]
+	;mov		word[keyboard_interrupt_handler], ax
+	;mov		ax,		word[gs:0x0026]
+	;mov		word[keyboard_interrupt_segment], ax
+	pop		ds
+	pop		es
 	popa
 	retn
 
 restore_interrupts:
+;load PIT and keyboard interrupts ISR values (function & segment)
+;from saved before values in variables above
 	cli
 	pusha
-	xor		ax,		ax
-	mov		gs,		ax
-	mov		ax,		word[pit_interrupt_handler]
-	mov		word[gs:0x0020],	ax
-	mov		ax,		word[pit_interrupt_segment]
-	mov		word[gs:0x0022],	ax
-	mov		ax,		word[keyboard_interrupt_handler]
-	mov		word[gs:0x0024],	ax
-	mov		ax,		word[keyboard_interrupt_segment]
-	mov		word[gs:0x0026],	ax
+	push	es
+
+	xor		ax,		ax	;ISR segment
+	mov		es,		ax
+	mov		si,		pit_interrupt_handler
+	mov		di,		ISR_ADDR_PIT_FUNC
+	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
+	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
+	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
+	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
+
+	;xor		ax,		ax
+	;mov		gs,		ax
+	;mov		ax,		word[pit_interrupt_handler]
+	;mov		word[gs:0x0020],	ax
+	;mov		ax,		word[pit_interrupt_segment]
+	;mov		word[gs:0x0022],	ax
+	;mov		ax,		word[keyboard_interrupt_handler]
+	;mov		word[gs:0x0024],	ax
+	;mov		ax,		word[keyboard_interrupt_segment]
+	;mov		word[gs:0x0026],	ax
+
+	pop		es
 	popa
 	sti
 	retn
 
 %include "syscall.inc"
 
-;ah - number of function
+;bx - number of function
 syscall:
 	add		bx,		syscall_jump_table
 	push	gs
@@ -72,27 +111,45 @@ syscall:
 	call	bx
 	iret
 
+%include "rtc.asm"
+
 syscall_jump_table:
-	dw		vga_clear_screen
-	dw		vga_cursor_disable
-	dw		vga_cursor_enable
-	dw		_interrupt_vga_cursor_move
-	dw		_interrupt_tty_putchar_ascii
-	dw		_interrupt_tty_print_ascii
-	dw		_interrupt_tty_next_row
-	dw		fat12_read_root
-	dw		fat12_find_entry
-	dw		fat12_load_entry
-	dw		_interrupt_pit_set_frequency
-	dw		_interrupt_pit_get_frequency
-	dw		_interrupt_wait_keyboard_input
-	dw		_interrupt_scancode_to_ascii
-	dw		_interrupt_int_to_ascii
-	dw		_interrupt_uint_to_ascii
-	dw		_interrupt_set_pit_int
-	dw		_interrupt_set_keyboard_int
-	dw		_interrupt_rand_int
-	dw		_interrupt_set_rand_seed
+	dw		vga_clear_screen				;#1
+	dw		vga_cursor_disable				;#2
+	dw		vga_cursor_enable				;#3
+	dw		_interrupt_vga_cursor_move		;#4
+	dw		_interrupt_tty_putchar_ascii	;#5
+	dw		_interrupt_tty_print_ascii		;#6
+	dw		_interrupt_tty_next_row			;#7
+	dw		fat12_read_root					;#8
+	dw		fat12_find_entry				;#9
+	dw		fat12_load_entry				;#10
+	dw		_interrupt_pit_set_frequency	;#11
+	dw		_interrupt_pit_get_frequency	;#12
+	dw		_interrupt_wait_keyboard_input	;#13
+	dw		_interrupt_scancode_to_ascii	;#14
+	dw		_interrupt_int_to_ascii			;#15
+	dw		_interrupt_uint_to_ascii		;#16
+	dw		_interrupt_set_pit_int			;#17
+	dw		_interrupt_set_keyboard_int		;#18
+	dw		_interrupt_rand_int				;#19
+	dw		_interrupt_set_rand_seed		;#20
+	dw		rtc_get_sec						;#21
+	dw		rtc_get_min						;#22
+	dw		rtc_get_hour					;#23
+	dw		rtc_get_day						;#25
+	dw		rtc_get_month					;#26
+	dw		rtc_get_year					;#27
+	dw		rtc_get_century					;#28
+	dw		rtc_get_week					;#29
+	dw		rtc_get_ascii_sec				;#30
+	dw		rtc_get_ascii_min				;#31
+	dw		rtc_get_ascii_hour				;#32
+	dw		rtc_get_ascii_day				;#33
+	dw		rtc_get_ascii_month				;#34
+	dw		rtc_get_ascii_year				;#35
+	dw		rtc_get_ascii_century			;#36
+	dw		rtc_get_ascii_week				;#37
 
 _interrupt_pit_set_frequency:
 ;in: ax = frequency

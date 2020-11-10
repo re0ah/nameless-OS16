@@ -3,7 +3,7 @@
 PICM	equ 0x20 ;master PIC
 PIC_EOI	equ 0x20 ;end of interrupt code
 
-VGA_BUFFER		equ 0xB800
+VGA_BUFFER		equ 0xA000
 VGA_WIDTH       equ 40
 VGA_HEIGHT      equ 25
 VGA_CHAR_SIZE   equ 2 ;bytes
@@ -19,15 +19,17 @@ SNAKE_TO_UP		equ -(VGA_WIDTH * VGA_CHAR_SIZE)
 SNAKE_TO_LEFT	equ -VGA_CHAR_SIZE
 SNAKE_TO_DOWN	equ VGA_WIDTH * VGA_CHAR_SIZE
 SNAKE_TO_RIGHT	equ VGA_CHAR_SIZE
-snake_direction dw SNAKE_TO_LEFT
+snake_direction dw SNAKE_TO_STOP
 
 KB_DATA_PORT   equ 0x60
 KB_STATUS_PORT equ 0x64
 
 snake:
-	mov		ax,		0x0001 ;set video mode, 40x25
+	mov		ax,		0x0012 ;set video mode, 40x25
 						   ;why this mode? In them symbols are square, x=y
 	int		0x10
+	mov		ax,		VGA_BUFFER
+	mov		es,		ax
 ;	mov		bx,		SYSCALL_VGA_CLEAR_SCREEN
 	xor		bx,		bx
 	int		0x20
@@ -123,27 +125,17 @@ fruit_generate:
 	or		ax,		0x0001
 	mov		bx,		SYSCALL_SET_RAND_SEED
 	int		0x20
-.again_get_y:
 	mov		bx,		SYSCALL_GET_RAND_INT
 	int		0x20
-	and		ax,		0x0016
-	test	ax,		ax
-	je		.again_get_y
-	shl		ax,		4
-	mov		cx,		ax	;y pos, need mul to 80
-	shl		cx,		2
-	add		cx,		ax
-.again_get_x:
-	mov		bx,		SYSCALL_GET_RAND_INT
-	int		0x20
-	and		ax,		0x001E
-	shl		ax,		1
-	test	ax,		ax
-	je		.again_get_x
-	add		ax,		cx	;x pos
-	cmp		ax,		word[fruit_pos]
-	je		fruit_generate
 	mov		bx,		ax
+	and		bx,		0x0540 ;mask of arena
+						   ;2000 & 1380 = 1344 = 0x540
+						   ;where 1380 = arena_width(30) *
+						   ;			 arena_height(23) *
+						   ;			 vga_char_size(2)
+						   ;where 2000 = vga_width(40) *
+						   ;			 vga_height(25) *
+						   ;			 vga_char_size(2)
 	mov		word[fruit_pos],	bx
 	mov		ax,		0x0746	;black bg, gray fg, char=F
 	mov		word[es:bx],	ax
@@ -168,29 +160,21 @@ keyboard_handler:
 .if_not_esc:
 	cmp		al,		0x11	;'W'
 	jne		.if_not_up
-	cmp		word[snake_direction],	SNAKE_TO_DOWN
-	je		.end
 	mov		word[snake_direction],	SNAKE_TO_UP
 	jmp		.end
 .if_not_up:
 	cmp		al,		0x1E	;'A'
 	jne		.if_not_left
-	cmp		word[snake_direction],	SNAKE_TO_RIGHT
-	je		.end
 	mov		word[snake_direction],	SNAKE_TO_LEFT
 	jmp		.end
 .if_not_left:
 	cmp		al,		0x1F	;'S'
 	jne		.if_not_down
-	cmp		word[snake_direction],	SNAKE_TO_UP
-	je		.end
 	mov		word[snake_direction],	SNAKE_TO_DOWN
 	jmp		.end
 .if_not_down:
 	cmp		al,		0x20	;'D'
 	jne		.end
-	cmp		word[snake_direction],	SNAKE_TO_LEFT
-	je		.end
 	mov		word[snake_direction],	SNAKE_TO_RIGHT
 .end:
 	mov     al,     PICM

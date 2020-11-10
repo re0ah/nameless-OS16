@@ -31,25 +31,46 @@ KB_WRITE_SET_SCANCODE equ 0xF0
 KB_SCANCODE_SET		  equ 0x01
 
 keyboard_init:
+;set scancode set
 ;	call	keyboard_wait_port
-
+;
 ;	mov		al,		KB_WRITE_SET_SCANCODE
 ;	out		KB_DATA_PORT,	al
-
+;
 ;	call	keyboard_wait_port
-
-;	mov		al,		0x02	;scancode set 1
-	;i was suprised, but when i send 0x01 in data port for set scancode
-;then scancode set was set as set 2. When i send the 0x02 then set became
-;set 1. Because i will commented it, maybe I will deal with this later
+;
 ;	mov		al,		KB_SCANCODE_SET
 ;	out		KB_DATA_PORT,	al
 	retn
 
 keyboard_int:
 	in		al,		KB_DATA_PORT ;get scancode
+
+	cmp		al,		0xE0	;spec scancode
+	je		kb_spec_scancode
+
 	call	keyboard_set_led
+	call	check_shift_pressed
 	call	push_kb_buf
+	mov		al,		PICM
+	out		PIC_EOI, al
+	iret
+
+kb_spec_scancode:
+	in		al,		KB_DATA_PORT
+	;pg up make = e0, 49
+	;pg dn make = e0, 51
+	cmp		al,		0x49
+	jne		.not_pg_up_make
+	call	vga_page_up
+	mov		al,		PICM
+	out		PIC_EOI, al
+	iret
+.not_pg_up_make:
+	cmp		al,		0x51
+	jne		.end
+	call	vga_page_down
+.end:
 	mov		al,		PICM
 	out		PIC_EOI, al
 	iret
@@ -58,10 +79,9 @@ KB_OVERFLOW equ 0x00	;this scancode don't used in XT set
 push_kb_buf:
 ;in:  al = scancode
 ;out: al = KB_OVERFLOW if error, else scancode
-	mov		bl,		byte[kb_buf_pos]
-	cmp		bl,		KB_BUF_SIZE
+	movzx	bx,		byte[kb_buf_pos]
+	cmp		bx,		KB_BUF_SIZE
 	je		.end_overflow
-	xor		bh,		bh
 	add		bx,		kb_buf
 	mov		byte[bx],	al
 	inc		byte[kb_buf_pos]
@@ -75,12 +95,11 @@ KB_EMPTY equ 0x00	;this scancode don't used in XT set
 pop_kb_buf:
 ;in:  al = scancode
 ;out: al = KB_EMPTY if error, else scancode
-	mov		bl,		byte[kb_buf_pos]
-	test	bl,		bl
+	movzx	bx,		byte[kb_buf_pos]
+	test	bx,		bx
 	je		.end_empty
 	dec		bl
 	mov		byte[kb_buf_pos],	bl
-	xor		bh,		bh
 	add		bx,		kb_buf
 	mov		al,		byte[bx]
 	retn
@@ -92,36 +111,32 @@ pop_kb_buf:
 keyboard_set_led:
 ;in:  al = scancode
 ;out:
+;check if scancode equal of caps/num/scrl lock. Set/Reset them and
+;set LED state
 	mov		bl,		byte[kb_led_status]
+	mov		cl,		bl
+	not		cl
 	cmp		al,		0x3A	;caps lock
 	je		.caps
 	cmp		al,		0x45	;num lock
 	je		.num
 	cmp		al,		0x46	;scroll lock
 	jne		.end
-		and		bl,		KB_LED_SCRL
-		je		.set_scrl
-		and		byte[kb_led_status], KB_LED_MASK_RESET_SCRL
-		jmp		.write_port
-	.set_scrl:
-		or		byte[kb_led_status], KB_LED_MASK_SET_SCRL
-		jmp		.write_port
+		and		bl,		0xFE
+		and		cl,		KB_LED_SCRL
+		jmp		.write_to_led
 .caps:
-		and		bl,		KB_LED_CAPS
-		je		.set_caps
-		and		byte[kb_led_status], KB_LED_MASK_RESET_CAPS
-		jmp		.write_port
-	.set_caps:
-		or		byte[kb_led_status], KB_LED_MASK_SET_CAPS
-		jmp		.write_port
+		and		bl,		0xFB
+		and		cl,		KB_LED_CAPS
+		jmp		.write_to_led
 .num:
-		and		bl,		KB_LED_CAPS
-		je		.set_num
-		and		byte[kb_led_status], KB_LED_MASK_RESET_NUM
-		jmp		.write_port
-	.set_num:
-		or		byte[kb_led_status], KB_LED_MASK_SET_NUM
+		and		bl,		0xFD
+		and		cl,		KB_LED_NUM
+.write_to_led:
+	or		bl,		cl
+	mov		byte[kb_led_status],	bl
 .write_port:
+
 ;	call	keyboard_wait_port
 
 ;	mov		al,		KB_WRITE_LEDS
@@ -145,20 +160,54 @@ keyboard_wait_port:
 wait_keyboard_input:
 ;in:
 ;out: al = scancode
+;wait when will pass data in keyboard buffer.
 	jmp		.wait_in
 .wait:
-	;hlt
+	hlt
 .wait_in:
 	cmp		byte[kb_buf_pos],	0
 	je		.wait
 	call	pop_kb_buf
 	retn
 
+kb_shift_pressed db 0
+check_shift_pressed:
+;in: al=scancode
+;set/reset if scancode will shift
+	cmp		al,		0x2A	;left shift  make
+	je		.shift_make
+	cmp		al,		0x36	;right shift make
+	je		.shift_make
+	cmp		al,		0xAA	;left shift  break
+	je		.shift_break
+	cmp		al,		0xB6	;right shift break
+	je		.shift_break
+	retn
+.shift_make:
+	mov		byte[kb_shift_pressed],	1
+	retn
+.shift_break:
+	mov		byte[kb_shift_pressed],	0
+	retn
+
 if_caps:
 ;also check shift pressed
 ;out: cl = caps or not
+;C = caps  state
+;S = shift state
+;RES = result for return
+;_____________
+;| C | S |RES|
+;| 0 | 0 | 0 |
+;| 0 | 1 | 1 |
+;| 1 | 0 | 1 |
+;| 1 | 1 | 0 |
+;-------------
+;it's !(==)
 	mov		cl,		byte[kb_led_status]
 	and		cl,		KB_LED_CAPS
+	cmp		cl,		byte[kb_shift_pressed]
+	setne	cl
 	retn
 
 SCANCODE_SET:;(XT SCANCODE SET)

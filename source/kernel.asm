@@ -34,8 +34,12 @@ execve:
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
 	je		.end
 	call	save_interrupts
+	push	es
 	mov		si,		PROCESS_OFFSET
+	mov		es,		si
+	xor		si,		si
 	call	fat12_load_entry
+	pop		es
 	mov		ax,		PROCESS_OFFSET
 	mov		ds,		ax
 	call	PROCESS_OFFSET:0x0000

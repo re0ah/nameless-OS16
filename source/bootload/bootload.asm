@@ -221,7 +221,7 @@ even:
 next_cluster_cont:
 	mov		word[cluster],	ax	;store cluster
 
-	cmp		ax,		0x0FF8		;FF8h = end of file marker in FAT12
+	cmp		ax,		0x0FF8		;0xFF8 = end of file marker in FAT12
 	jae		to_kernel
 
 	add		word[pointer],	BYTES_PER_SECTOR
