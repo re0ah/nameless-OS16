@@ -28,7 +28,7 @@ KB_LED_MASK_RESET_CAPS equ 0x03
 
 KB_WRITE_LEDS		  equ 0xED
 KB_WRITE_SET_SCANCODE equ 0xF0
-KB_SCANCODE_SET		  equ 0x01
+KB_SCANCODE_SET		  equ 0x00
 
 keyboard_init:
 ;set scancode set
@@ -36,14 +36,20 @@ keyboard_init:
 ;
 ;	mov		al,		KB_WRITE_SET_SCANCODE
 ;	out		KB_DATA_PORT,	al
-;
+
 ;	call	keyboard_wait_port
-;
+
 ;	mov		al,		KB_SCANCODE_SET
 ;	out		KB_DATA_PORT,	al
 	retn
 
 keyboard_int:
+	push	ds
+	push	ax
+	mov		ax,		KERNEL_OFFSET
+	mov		ds,		ax
+	pop		ax
+
 	in		al,		KB_DATA_PORT ;get scancode
 
 	cmp		al,		0xE0	;spec scancode
@@ -52,6 +58,7 @@ keyboard_int:
 	call	keyboard_set_led
 	call	check_shift_pressed
 	call	push_kb_buf
+	pop		ds
 	mov		al,		PICM
 	out		PIC_EOI, al
 	iret
@@ -68,8 +75,9 @@ kb_spec_scancode:
 	iret
 .not_pg_up_make:
 	cmp		al,		0x51
-	jne		.end
+	jne		.not_page_down_make
 	call	vga_page_down
+.not_page_down_make:
 .end:
 	mov		al,		PICM
 	out		PIC_EOI, al
@@ -204,10 +212,13 @@ if_caps:
 ;| 1 | 1 | 0 |
 ;-------------
 ;it's !(==)
+	;mov		cl,		byte[kb_led_status]
+	;and		cl,		KB_LED_CAPS
+	;cmp		cl,		byte[kb_shift_pressed]
+	;setne	cl
+	;retn
 	mov		cl,		byte[kb_led_status]
 	and		cl,		KB_LED_CAPS
-	cmp		cl,		byte[kb_shift_pressed]
-	setne	cl
 	retn
 
 SCANCODE_SET:;(XT SCANCODE SET)
@@ -296,3 +307,59 @@ SCANCODE_SET:;(XT SCANCODE SET)
 	db '0'	;MAKE KP 0,		 #52
 	db '.'	;MAKE KP .,		 #53
 	;no more printable chars, only BREAKS and UNUSED
+
+SCANCODE_SET_WITH_SHIFT:;(XT SCANCODE SET)
+	db 0x00	;				 #00
+	db 0x00	;MAKE ESC,		 #01
+	db '!'	;MAKE 1,		 #02
+	db '@'	;MAKE 2,		 #03
+	db '#'	;MAKE 3,		 #04
+	db '$'	;MAKE 4,		 #05
+	db '%'	;MAKE 5,		 #06
+	db '^'	;MAKE 6,		 #07
+	db '&'	;MAKE 7,		 #08
+	db '*'	;MAKE 8,		 #09
+	db '('	;MAKE 9,		 #0A
+	db ')'	;MAKE 0,		 #0B
+	db '_'	;MAKE -,		 #0C
+	db '+'	;MAKE =,		 #0D
+	db 0x00	;MAKE BAKESPACE, #0E
+	db 0x00 ;MAKE TAB,		 #0F
+	db 'Q'	;MAKE Q,		 #10
+	db 'W'	;MAKE W,		 #11
+	db 'E'	;MAKE E,		 #12
+	db 'R'	;MAKE R,		 #13
+	db 'T'	;MAKE T,		 #14
+	db 'Y'	;MAKE Y,		 #15
+	db 'U'	;MAKE U,		 #16
+	db 'I'	;MAKE I,		 #17
+	db 'O'	;MAKE O,		 #18
+	db 'P'	;MAKE P,		 #19
+	db '{'	;MAKE [,		 #1A
+	db '}'	;MAKE ],		 #1B
+	db 0x00	;MAKE ENTER,	 #1C
+	db 0x00	;MAKE L CONTROL, #1D
+	db 'A'	;MAKE A,		 #1E
+	db 'S'	;MAKE S,		 #1F
+	db 'D'	;MAKE D,		 #20
+	db 'F'	;MAKE F,		 #21
+	db 'G'	;MAKE G,		 #22
+	db 'H'	;MAKE H,		 #23
+	db 'J'	;MAKE J,		 #24
+	db 'K'	;MAKE K,		 #25
+	db 'L'	;MAKE L,		 #26
+	db ':'	;MAKE ;,		 #27
+	db '"'	;MAKE ',		 #28
+	db '~'	;MAKE `,		 #29
+	db 0x00	;MAKE L SHIFT,	 #2A
+	db '|'	;MAKE \,		 #2B
+	db 'Z'	;MAKE Z,		 #2C
+	db 'X'	;MAKE X,		 #2D
+	db 'C'	;MAKE C,		 #2E
+	db 'V'	;MAKE V,		 #2F
+	db 'B'	;MAKE B,		 #30
+	db 'N'	;MAKE N,		 #31
+	db 'M'	;MAKE M,		 #32
+	db '<'	;MAKE ,,		 #33
+	db '>'	;MAKE .,		 #34
+	db '?'	;MAKE /,		 #35

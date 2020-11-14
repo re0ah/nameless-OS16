@@ -82,8 +82,7 @@ str_to_fat12_filename:
 
 	retn
 
-FAT12_STR db 0x20, 0x20, 0x20, 0x20, 0x20, 0x20
-		  db 0x20, 0x20, 0x20, 0x20, 0x20
+FAT12_STR times 11 db 0x20
 	FAT12_STRLEN equ $-FAT12_STR
 	FAT12_STRLEN_WITHOUT_EXT equ FAT12_STRLEN - 3
 	FAT12_EXT equ FAT12_STR + 8
@@ -114,13 +113,37 @@ char_to_caps:
 .end:
 	retn
 
+caps_to_char:
+;in:  al = ascii
+;out: al = caps ascii
+	cmp		al,		'A'
+	jnge	.end
+	cmp		al,		'Z'
+	jnle	.end
+	or		al,		0x20
+.end:
+	retn
+
 scancode_to_ascii:
 ;in:  al = scancode
 ;out: al = ascii
+	mov		bl,		byte[kb_shift_pressed]
+	test	bl,		bl
+	je		.if_shift_not_pressed
+	cmp		al,		0x35
+	ja		.not_printable
+	movzx	bx,		al
+	add		bx,		SCANCODE_SET_WITH_SHIFT
+	mov		al,		byte[bx]
+	call	if_caps
+	jcxz	.caps_not_set
+	call	caps_to_char
+	retn
+	
+.if_shift_not_pressed:
 	cmp		al,		0x53
 	ja		.not_printable
-	mov		bl,		al
-	xor		bh,		bh
+	movzx	bx,		al
 	add		bx,		SCANCODE_SET
 	mov		al,		byte[bx]
 	call	if_caps

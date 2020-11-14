@@ -19,48 +19,51 @@ SNAKE_TO_UP		equ -(VGA_WIDTH * VGA_CHAR_SIZE)
 SNAKE_TO_LEFT	equ -VGA_CHAR_SIZE
 SNAKE_TO_DOWN	equ VGA_WIDTH * VGA_CHAR_SIZE
 SNAKE_TO_RIGHT	equ VGA_CHAR_SIZE
-snake_direction dw SNAKE_TO_LEFT
-
-KB_DATA_PORT   equ 0x60
-KB_STATUS_PORT equ 0x64
 
 snake:
-	mov		ax,		0x0001 ;set video mode, 40x25
-						   ;why this mode? In them symbols are square, x=y
-	int		0x10
-;	mov		bx,		SYSCALL_VGA_CLEAR_SCREEN
+.init:
+	mov		al,		0x01 ;set video mode, 40x25
+						 ;why this mode? In them symbols are square, x=y
+	mov		bx,		SYSCALL_VGA_SET_VIDEO_MODE
+	int		0x20
+	mov		bx,		SYSCALL_VGA_CLEAR_SCREEN
 	xor		bx,		bx
 	int		0x20
 	mov		bx,		SYSCALL_VGA_CURSOR_DISABLE
 	int		0x20
+.start:
 	call	draw_wall
-	mov		ax,		0x0743
-	mov		bx,		SNAKE_POS_DEFAULT
-	mov		word[es:bx],	ax
 	mov		di,		pit_handler
 	mov		bx,		SYSCALL_SET_PIT_INT
 	int		0x20
+	;mov		di,		pit_handler
+	m;ov		bx,		SYSCALL_SET_KEYBOARD_INT
+	;int		0x20
 	mov		ax,		0xFF00
 	mov		bx,		SYSCALL_PIT_SET_FREQUENCY
-	int		0x20
-	mov		di,		keyboard_handler
-	mov		bx,		SYSCALL_SET_KEYBOARD_INT
 	int		0x20
 	call	draw_score
 	call	fruit_generate
 .lp:
 	hlt
-	jmp		.lp
+	movzx	cx,		byte[game_end]
+	jcxz	.lp
+.exit:
 	mov		bx,		SYSCALL_VGA_CURSOR_ENABLE
 	int		0x20
-	mov		ax,		0x0003 ;set back video mode
-	int		0x10
+	mov		al,		0x03
+	mov		bx,		SYSCALL_VGA_SET_VIDEO_MODE
+	int		0x20
 	retf
+
+game_end db 0
 
 SNAKE_POS_DEFAULT equ 910
 snake_pos dw SNAKE_POS_DEFAULT ;x=16,y=15,vga_char_size=2
+snake_direction dw SNAKE_TO_STOP
 
 pit_handler:
+	call	keyboard_routine
 	call	snake_move
 
 	mov     al,     PICM
@@ -78,40 +81,37 @@ snake_move:
 	mov		ax,		0x0743
 	mov		word[es:bx],	ax
 
+	pusha
 	call	check_wall_collision
-	jcxz	.if_wall_collision
+	popa
 	call	check_fruit_collision
 .exit:
-	retn
-.if_wall_collision:
-	call	lose_window
 	retn
 
 divisor_vga_row_size dw VGA_ROW_SIZE
 check_wall_collision:
 ;in:  bx=snake pos
-;out: cx=1 if not collision, cx=0 if collision
-	cmp		bx,		ROW_SIZE
-	jl		.if_collision
-	cmp		bx,		FINAL_ROW_POS
-	jg		.if_collision
-	xor		dx,		dx
+	cmp		bx,		ROW_SIZE ;check up border
+	jl		.lose_window
+
+	cmp		bx,		FINAL_ROW_POS ;check bottom border
+	jge		.lose_window
+
+	xor		dx,		dx ;check right border
 	mov		ax,		bx
 	add		ax,		18
 	div		word[divisor_vga_row_size]
 	test	dx,		dx
-	je		.if_collision
-	xor		dx,		dx
+	je		.lose_window
+
+	xor		dx,		dx ;check left border
 	mov		ax,		bx
 	div		word[divisor_vga_row_size]
 	test	dx,		dx
-	je		.if_collision
-	jmp		.if_not_collision
-.if_collision:
-	mov		word[snake_direction],	SNAKE_TO_STOP
-	xor		cx,		cx
-.if_not_collision:
-	mov		cx,		0x01
+	je		.lose_window
+	retn
+.lose_window:
+	call	lose_window
 	retn
 
 fruit_pos dw 0
@@ -159,8 +159,11 @@ check_fruit_collision:
 .collision_false:
 	retn
 
-keyboard_handler:
-	in		al,		KB_DATA_PORT
+keyboard_routine:
+	mov		bx,		SYSCALL_GET_KEYBOARD_DATA
+	int		0x20
+	test	al,		al
+	je		.end
 	cmp		al,		0x01	;ESC
 	jne		.if_not_esc
 	mov		word[snake_direction],	SNAKE_TO_STOP
@@ -192,10 +195,9 @@ keyboard_handler:
 	cmp		word[snake_direction],	SNAKE_TO_LEFT
 	je		.end
 	mov		word[snake_direction],	SNAKE_TO_RIGHT
+	jmp		keyboard_routine
 .end:
-	mov     al,     PICM
-	out     PIC_EOI, al
-	iret
+	retn
 
 score_str db "S", 0x07, "C", 0x07, "O", 0x07, "R", 0x07, "E", 0x07
 	SCORE_STR_SIZE equ $-score_str
@@ -226,6 +228,8 @@ draw_score:
 	retn
 
 lose_window:
+	mov		byte[game_end],		1
+
 	retn
 
 draw_wall:

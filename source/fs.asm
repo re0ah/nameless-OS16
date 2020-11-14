@@ -98,6 +98,30 @@ fat12_read_root:
 	pop		es
 	retn
 
+fat12_file_size:
+;in:  ds:si - name of file
+;out: if found:  dx:ax = file size (dx - high, ax - low)
+;	  not found: ax = FAT12_ENTRY_NOT_FOUND
+	call	fat12_find_entry
+	cmp		ax,		FAT12_ENTRY_NOT_FOUND
+	je		.not_found
+	call	fat12_file_entry_size
+.not_found:
+	retn
+
+fat12_file_entry_size:
+;in:  DISK_BUFFER:ax = ptr on fat12 entry
+;out: if found:  dx:ax = file size (dx - high, ax - low)
+;	  not found: ax = FAT12_ENTRY_NOT_FOUND
+	push	fs
+	mov		dx,		DISK_BUFFER
+	mov		fs,		dx
+	mov		bx,		ax
+	mov		ax,		word[fs:bx + 28]
+	mov		dx,		word[fs:bx + 30]
+	pop		fs
+	retn
+
 fat12_find_entry:
 ;in:  ds:si - name of file
 ;out: if found:  ax = ptr on fat12 entry
@@ -193,21 +217,6 @@ fat12_load_entry:
 	shr		bx,		1
 	add		si,		bx
 	mov		ax,		word[gs:si]
-
-	;pusha
-	;push	es
-	;mov		bx,		VGA_BUFFER
-	;mov		es,		bx
-	;mov		si,		STRTR
-	;mov		bx,		SYSCALL_UINT_TO_ASCII
-	;int		0x20
-	;mov		bx,		SYSCALL_TTY_PRINT_ASCII
-	;int		0x20
-;	mov		bx,		SYSCALL_TTY_PUTCHAR_ASCII
-;	mov		al,		' '
-;	int		0x20
-;	pop		es
-;	popa
 
 	jcxz	.even
 .odd:

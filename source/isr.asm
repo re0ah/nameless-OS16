@@ -118,38 +118,44 @@ syscall_jump_table:
 	dw		vga_cursor_disable				;#2
 	dw		vga_cursor_enable				;#3
 	dw		_interrupt_vga_cursor_move		;#4
-	dw		_interrupt_tty_putchar_ascii	;#5
-	dw		_interrupt_tty_print_ascii		;#6
-	dw		_interrupt_tty_next_row			;#7
-	dw		fat12_read_root					;#8
-	dw		fat12_find_entry				;#9
-	dw		fat12_load_entry				;#10
-	dw		_interrupt_pit_set_frequency	;#11
-	dw		_interrupt_pit_get_frequency	;#12
-	dw		_interrupt_wait_keyboard_input	;#13
-	dw		_interrupt_scancode_to_ascii	;#14
-	dw		_interrupt_int_to_ascii			;#15
-	dw		_interrupt_uint_to_ascii		;#16
-	dw		_interrupt_set_pit_int			;#17
-	dw		_interrupt_set_keyboard_int		;#18
-	dw		_interrupt_rand_int				;#19
-	dw		_interrupt_set_rand_seed		;#20
-	dw		rtc_get_sec						;#21
-	dw		rtc_get_min						;#22
-	dw		rtc_get_hour					;#23
-	dw		rtc_get_day						;#25
-	dw		rtc_get_month					;#26
-	dw		rtc_get_year					;#27
-	dw		rtc_get_century					;#28
-	dw		rtc_get_week					;#29
-	dw		rtc_get_ascii_sec				;#30
-	dw		rtc_get_ascii_min				;#31
-	dw		rtc_get_ascii_hour				;#32
-	dw		rtc_get_ascii_day				;#33
-	dw		rtc_get_ascii_month				;#34
-	dw		rtc_get_ascii_year				;#35
-	dw		rtc_get_ascii_century			;#36
-	dw		rtc_get_ascii_week				;#37
+	dw		vga_set_video_mode				;#5
+	dw		_interrupt_tty_putchar_ascii	;#6
+	dw		_interrupt_tty_print_ascii		;#7
+	dw		_interrupt_tty_next_row			;#8
+	dw		fat12_read_root					;#9
+	dw		fat12_find_entry				;#10
+	dw		fat12_load_entry				;#11
+	dw		fat12_file_size					;#12
+	dw		fat12_file_entry_size			;#13
+	dw		_interrupt_pit_set_frequency	;#14
+	dw		_interrupt_pit_get_frequency	;#15
+	dw		_interrupt_get_keyboard_input	;#16
+	dw		_interrupt_wait_keyboard_input	;#17
+	dw		_interrupt_scancode_to_ascii	;#18
+	dw		_interrupt_int_to_ascii			;#19
+	dw		_interrupt_uint_to_ascii		;#20
+	dw		_interrupt_set_pit_int			;#21
+	dw		_interrupt_set_keyboard_int		;#22
+	dw		_interrupt_rand_int				;#23
+	dw		_interrupt_set_rand_seed		;#24
+	dw		rtc_get_sec						;#25
+	dw		rtc_get_min						;#26
+	dw		rtc_get_hour					;#27
+	dw		rtc_get_day						;#28
+	dw		rtc_get_month					;#29
+	dw		rtc_get_year					;#30
+	dw		rtc_get_century					;#31
+	dw		rtc_get_week					;#32
+	dw		rtc_get_ascii_sec				;#33
+	dw		rtc_get_ascii_min				;#34
+	dw		rtc_get_ascii_hour				;#35
+	dw		rtc_get_ascii_day				;#36
+	dw		rtc_get_ascii_month				;#37
+	dw		rtc_get_ascii_year				;#38
+	dw		rtc_get_ascii_century			;#39
+	dw		rtc_get_ascii_week				;#40
+	dw		_interrupt_get_argc				;#41
+	dw		_interrupt_get_argv				;#42
 
 _interrupt_pit_set_frequency:
 ;in: ax = frequency
@@ -188,6 +194,8 @@ _interrupt_tty_putchar_ascii:
 	test	al,		al
 	je		.end
 	push	ds
+	cmp		al,		0x0A ;'\n'
+	je		.new_line
 	mov		bx,		KERNEL_OFFSET
 	mov		ds,		bx
 	mov		ah,		byte[vga_color]
@@ -198,6 +206,12 @@ _interrupt_tty_putchar_ascii:
 	pop		ds
 .end:
 	retn
+.new_line:
+	pusha
+	call	_interrupt_tty_next_row
+	popa
+	pop		ds
+	retn
 
 _interrupt_tty_print_ascii:
 ;in:  si = ptr to str
@@ -206,24 +220,10 @@ _interrupt_tty_print_ascii:
 ;     cx = 0
 ;     ax = vga_char of last symbol in si (al = ASCII, ah = color)
 ;     bx = word[vga_pos_cursor]
-	mov		ax,		ds
-	mov		gs,		ax
-	push	ds
-	mov		ax,		KERNEL_OFFSET
-	mov		ds,		ax
-	mov		di,		word[vga_pos_cursor]
-	mov		bx,		cx
-	shl		bx,		1
-	add     word[vga_pos_cursor], bx
-	call    vga_cursor_move.without_get_pos_cursor
-	mov     ah,     byte[vga_color]
-	pop		ds
 .lp:
-	mov		al,		byte[gs:si]
-	mov     word[es:di],    ax
-	inc		si
-	add		di,		2
-	loop    .lp
+	lodsb	;al <- ds:si
+	call	_interrupt_tty_putchar_ascii
+	loop	.lp
 	retn
 
 _interrupt_tty_next_row:
@@ -268,6 +268,17 @@ _interrupt_wait_keyboard_input:
 	
 	mov		al,		'g'
 
+	pop		ds
+	retn
+
+KB_EMPTY equ 0x00	;this scancode don't used in XT set
+_interrupt_get_keyboard_input:
+;in:  al = scancode
+;out: al = KB_EMPTY if error, else scancode
+	push	ds
+	mov		bx,		KERNEL_OFFSET
+	mov		ds,		bx
+	call	pop_kb_buf
 	pop		ds
 	retn
 

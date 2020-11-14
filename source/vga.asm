@@ -1,3 +1,4 @@
+;very thanks https://web.stanford.edu/class/cs140/projects/pintos/specs/freevga/vga/vga.htm
 VGA_BUFFER		equ 0xB800
 VGA_BUF_SIZE	equ 32768 ;bytes
 VGA_WIDTH		equ 80
@@ -45,8 +46,49 @@ CURSOR_OFFSET	equ	0x03D5	;this port get low  byte cursor position
 HIGH_BYTE_NOW	equ	0x0E	;next byte in CURSOR_OFFSET will be high
 LOW_BYTE_NOW	equ	0x0F	;next byte in CURSOR_OFFSET will be low
 
+;thanks osdev for this table
+;from https://wiki.osdev.org/Drawing_In_Protected_Mode
+;|_____________________________|
+;|_____standard VGA modes______|
+;|00|text 40*25 16 color (mono)|
+;|01|text 40*25 16 color       |
+;|02|text 80*25 16 color (mono)|
+;|03|text 80*25 16 color       |
+;|04|CGA 320*200 4 color       |
+;|05|CGA 320*200 4 color (mono)|
+;|06|CGA 640*200 2 color       |
+;|07|MDA monochrome text 80*25 |
+;|08|PCjr                      |
+;|09|PCjr                      |
+;|0A|PCjr                      |
+;|0B|reserved                  |
+;|0C|reserved                  |
+;|0D|EGA 320*200 16 color      |
+;|0E|EGA 640*200 16 color      |
+;|0F|EGA 640*350 mono          |
+;|10|EGA 640*350 16 color      |
+;|11|VGA 640*480 mono          |
+;|12|VGA 640*480 16 color      |
+;|13|VGA 320*200 256 color     |
+;-------------------------------
+;I will not make constants for these values, because...
+;Well, what should I name them?
+;VGA_CGA_320_200_4? VGA_VGA_640_480_16?
+;In my spirit, but perhaps not
+
 vga_pos_cursor  dw 0
 vga_color		db 0
+vga_memory_size dw 0
+
+vga_init:
+;find out of number VRAM
+	retn
+
+vga_set_video_mode:
+;al - video mode
+	xor		ah,		ah
+	int		0x10
+	retn
 
 vga_clear_screen:
 ;in:

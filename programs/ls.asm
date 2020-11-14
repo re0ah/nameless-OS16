@@ -2,6 +2,7 @@ bits 16
 %include "../source/syscall.inc"
 
 DISK_BUFFER equ 0x6000
+WINDOWS_MARKER equ 0x0F
 
 ls:
 	mov		bx,		SYSCALL_TTY_NEXT_ROW
@@ -10,9 +11,14 @@ ls:
 	int     0x20
 	mov		ax,		DISK_BUFFER
 	mov		fs,		ax
-	mov		dx,		DIR_ENTRY_SIZE 
+;	xor		dx,		dx
+	mov		dx,		32
 	jmp		.lp_in
 .lp:
+	mov		bx,		dx
+	mov		al,		byte[fs:bx + 11]
+	cmp		al,		WINDOWS_MARKER
+	je		.inc_cmp
 	push	dx
 	mov		si,		COMMA
 	mov		cx,		COMMA_SIZE
@@ -20,6 +26,10 @@ ls:
 	int		0x20
 	pop		dx
 .lp_in:
+	mov		bx,		dx
+	mov		al,		byte[fs:bx + 11]
+	cmp		al,		WINDOWS_MARKER
+	je		.inc_cmp
 	mov		si,		dx
 	mov		cx,		dx
 	add		cx,		FAT12_SIZE
@@ -53,7 +63,7 @@ ls:
 	mov		bx,		SYSCALL_TTY_PRINT_ASCII
 	int		0x20
 	pop		dx
-	
+.inc_cmp:	
 	add     dx,     DIR_ENTRY_SIZE
 	mov		bx,		dx
 	mov		al,		byte[fs:bx]

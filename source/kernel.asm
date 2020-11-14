@@ -21,7 +21,7 @@ kernel:
 
 	jmp		.to_tty
 
-PROCESS_OFFSET equ KERNEL_OFFSET + KERNEL_SIZE
+PROCESS_OFFSET equ 0x3000
 execve:
 ;in: ds:si = name of file
 ;	 ??? args? later
@@ -52,6 +52,7 @@ execve:
 .end:
 	retn
 
+%include "arg.asm"
 %include "vga.asm"
 %include "tty.asm"
 %include "fs.asm"
