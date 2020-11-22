@@ -36,16 +36,18 @@ snake:
 	mov		di,		pit_handler
 	mov		bx,		SYSCALL_SET_PIT_INT
 	int		0x20
-	;mov		di,		pit_handler
-	m;ov		bx,		SYSCALL_SET_KEYBOARD_INT
-	;int		0x20
+	mov		di,		keyboard_routine
+	mov		bx,		SYSCALL_SET_KEYBOARD_INT
+	int		0x20
 	mov		ax,		0xFF00
 	mov		bx,		SYSCALL_PIT_SET_FREQUENCY
 	int		0x20
 	call	draw_score
 	call	fruit_generate
 .lp:
+	sti
 	hlt
+	cli
 	movzx	cx,		byte[game_end]
 	jcxz	.lp
 .exit:
@@ -63,8 +65,9 @@ snake_pos dw SNAKE_POS_DEFAULT ;x=16,y=15,vga_char_size=2
 snake_direction dw SNAKE_TO_STOP
 
 pit_handler:
-	call	keyboard_routine
 	call	snake_move
+	call	check_wall_collision
+	call	check_fruit_collision
 
 	mov     al,     PICM
 	out     PIC_EOI, al
@@ -80,17 +83,14 @@ snake_move:
 	mov		word[snake_pos], bx
 	mov		ax,		0x0743
 	mov		word[es:bx],	ax
-
-	pusha
-	call	check_wall_collision
-	popa
-	call	check_fruit_collision
 .exit:
 	retn
 
 divisor_vga_row_size dw VGA_ROW_SIZE
 check_wall_collision:
 ;in:  bx=snake pos
+	mov		bx,		word[snake_pos]
+	mov		word[score],	bx
 	cmp		bx,		ROW_SIZE ;check up border
 	jl		.lose_window
 
@@ -160,10 +160,7 @@ check_fruit_collision:
 	retn
 
 keyboard_routine:
-	mov		bx,		SYSCALL_GET_KEYBOARD_DATA
-	int		0x20
-	test	al,		al
-	je		.end
+	in		al,		0x60
 	cmp		al,		0x01	;ESC
 	jne		.if_not_esc
 	mov		word[snake_direction],	SNAKE_TO_STOP
@@ -195,9 +192,10 @@ keyboard_routine:
 	cmp		word[snake_direction],	SNAKE_TO_LEFT
 	je		.end
 	mov		word[snake_direction],	SNAKE_TO_RIGHT
-	jmp		keyboard_routine
 .end:
-	retn
+	mov     al,     PICM
+	out     PIC_EOI, al
+	iret
 
 score_str db "S", 0x07, "C", 0x07, "O", 0x07, "R", 0x07, "E", 0x07
 	SCORE_STR_SIZE equ $-score_str

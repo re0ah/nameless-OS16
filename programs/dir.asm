@@ -160,7 +160,6 @@ print_number:
 	inc		cx
 	jmp		.back
 
-FSIZE
 FAT12_FNAME db "           "
 	FAT12_END equ $
 	FAT12_SIZE equ $ - FAT12_FNAME

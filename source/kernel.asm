@@ -16,6 +16,7 @@ kernel:
 	mov		ds,		ax
 
 	call	load_isr
+	call	serial_init
 .to_tty:
 	call	tty_start
 
@@ -59,5 +60,6 @@ execve:
 %include "isr.asm"
 %include "string.asm"
 %include "random.asm"
+%include "serial.asm"
 
 KERNEL_SIZE equ $

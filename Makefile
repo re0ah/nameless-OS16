@@ -27,7 +27,7 @@ os16.iso: os16.flp
 	mkisofs -quiet -V 'os16' -input-charset iso8859-1 -o images/os16.iso -b os16.flp images
 
 run: os16.iso
-	qemu-system-i386 -cdrom images/os16.iso
+	qemu-system-i386 -serial stdio -cdrom images/os16.iso
 
 %.bin: %.asm
 	$(AS) $(ASFLAGS) $< -o $@

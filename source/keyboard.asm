@@ -32,15 +32,23 @@ KB_SCANCODE_SET		  equ 0x00
 
 keyboard_init:
 ;set scancode set
-;	call	keyboard_wait_port
-;
 ;	mov		al,		KB_WRITE_SET_SCANCODE
-;	out		KB_DATA_PORT,	al
-
 ;	call	keyboard_wait_port
+;	out		KB_DATA_PORT,	al
 
 ;	mov		al,		KB_SCANCODE_SET
+;	call	keyboard_wait_port
 ;	out		KB_DATA_PORT,	al
+;	mov		al,		KB_WRITE_SET_SCANCODE
+;	call	keyboard_wait_port
+;	out		KB_DATA_PORT,	al
+
+;	mov		al,		KB_SCANCODE_SET
+;	call	keyboard_wait_port
+;	out		KB_DATA_PORT,	al
+
+;	call	keyboard_wait_port
+;	in		al,		KB_DATA_PORT
 	retn
 
 keyboard_int:
@@ -50,7 +58,21 @@ keyboard_int:
 	mov		ds,		ax
 	pop		ax
 
+	call	keyboard_wait_port
 	in		al,		KB_DATA_PORT ;get scancode
+
+;	cmp		al,		0xFF
+;	je		.exit
+;	cmp		al,		0xFE
+;	je		.exit
+;	cmp		al,		0x00
+;	je		.exit
+;	cmp		al,		0xEE
+;	je		.exit
+;	cmp		al,		0xAA
+;	je		.exit
+;	cmp		al,		0xFA
+;	je		.exit
 
 	cmp		al,		0xE0	;spec scancode
 	je		kb_spec_scancode
@@ -58,18 +80,21 @@ keyboard_int:
 	call	keyboard_set_led
 	call	check_shift_pressed
 	call	push_kb_buf
+.exit:
 	pop		ds
 	mov		al,		PICM
 	out		PIC_EOI, al
 	iret
 
 kb_spec_scancode:
+	call	keyboard_wait_port
 	in		al,		KB_DATA_PORT
 	;pg up make = e0, 49
 	;pg dn make = e0, 51
 	cmp		al,		0x49
 	jne		.not_pg_up_make
 	call	vga_page_up
+	pop		ds
 	mov		al,		PICM
 	out		PIC_EOI, al
 	iret
@@ -79,6 +104,7 @@ kb_spec_scancode:
 	call	vga_page_down
 .not_page_down_make:
 .end:
+	pop		ds
 	mov		al,		PICM
 	out		PIC_EOI, al
 	iret
@@ -145,16 +171,22 @@ keyboard_set_led:
 	mov		byte[kb_led_status],	bl
 .write_port:
 
-;	call	keyboard_wait_port
-
 ;	mov		al,		KB_WRITE_LEDS
-;	out		KB_DATA_PORT,	al
-
 ;	call	keyboard_wait_port
+;	out		KB_DATA_PORT,	al
 
 ;	mov		al,		byte[kb_led_status]
+;	call	keyboard_wait_port
 ;	out		KB_DATA_PORT,	al
-;I commented this, maybe i deal with this later
+
+;set LED response: 0xFA(Acknowledge) or 0xFE(Resend) 
+;	call	keyboard_wait_port
+;	in		al,		KB_DATA_PORT ;get scancode
+;	cmp		al,		0xFA
+;	je		.end
+;	cmp		al,		0xFE
+;	je		.end
+;	jmp		0xFFFF:0x0000
 .end:
 	retn
 
