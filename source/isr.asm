@@ -18,7 +18,7 @@ load_isr:
 	cli
 	call	pit_init
 	call	keyboard_init
-	xor		ax,		ax
+	xor		ax,		ax	;ISR offset
 	mov		gs,		ax
 	mov		ax,		KERNEL_OFFSET
 	mov		word[gs:ISR_ADDR_PIT_FUNC],			pit_int
@@ -97,16 +97,14 @@ restore_interrupts:
 	retn
 
 %include "syscall.inc"
-
-;bx - number of function
+;bx - number of syscall
 syscall:
-	add		bx,		syscall_jump_table
 	push	gs
 	push	ax
 	mov		ax,		KERNEL_OFFSET
 	mov		gs,		ax
 	pop		ax
-	mov		bx,		word[gs:bx]
+	mov		bx,		word[gs:bx + syscall_jump_table]
 	pop		gs
 	call	bx
 	iret
@@ -114,7 +112,7 @@ syscall:
 %include "rtc.asm"
 
 syscall_jump_table:
-	dw		vga_clear_screen				;#1
+	dw		_interrupt_vga_clear_screen		;#1
 	dw		vga_cursor_disable				;#2
 	dw		vga_cursor_enable				;#3
 	dw		_interrupt_vga_cursor_move		;#4
@@ -156,6 +154,14 @@ syscall_jump_table:
 	dw		rtc_get_ascii_week				;#40
 	dw		_interrupt_get_argc				;#41
 	dw		_interrupt_get_argv				;#42
+
+_interrupt_vga_clear_screen:
+	push	ds
+	mov		bx,		KERNEL_OFFSET
+	mov		ds,		bx
+	call	vga_clear_screen
+	pop		ds
+	retn
 
 _interrupt_pit_set_frequency:
 ;in: ax = frequency
@@ -245,32 +251,18 @@ _interrupt_wait_keyboard_input:
 	mov		ax,		KERNEL_OFFSET
 	mov		ds,		ax
 
-	jmp     .wait_in
+	jmp		.wait_in
 .wait:
-	;hlt
+	hlt
 .wait_in:
-	cmp     byte[kb_buf_pos],   0
+	mov		al,		byte[kb_buf_pos]
+	test	al,		al
 	je      .wait
 
-	mov     bl,     byte[kb_buf_pos]
-	test    bl,     bl
-	je      .end_empty
-	dec     bl
-	mov     byte[kb_buf_pos],   bl
-	xor     bh,     bh
-	add     bx,     kb_buf
-	mov     al,     byte[bx]
-	retn
-.end_empty:
-	;   mov     al,     KB_EMPTY
-	xor     al,     al
-	retn
-	
-	mov		al,		'g'
-
+	call	pop_kb_buf
 	pop		ds
 	retn
-
+	
 KB_EMPTY equ 0x00	;this scancode don't used in XT set
 _interrupt_get_keyboard_input:
 ;in:  al = scancode

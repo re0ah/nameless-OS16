@@ -26,20 +26,16 @@ snake:
 						 ;why this mode? In them symbols are square, x=y
 	mov		bx,		SYSCALL_VGA_SET_VIDEO_MODE
 	int		0x20
-	mov		bx,		SYSCALL_VGA_CLEAR_SCREEN
-	xor		bx,		bx
-	int		0x20
 	mov		bx,		SYSCALL_VGA_CURSOR_DISABLE
 	int		0x20
 .start:
+	mov		bx,		SYSCALL_VGA_CLEAR_SCREEN
+	int		0x20
 	call	draw_wall
 	mov		di,		pit_handler
 	mov		bx,		SYSCALL_SET_PIT_INT
 	int		0x20
-	mov		di,		keyboard_routine
-	mov		bx,		SYSCALL_SET_KEYBOARD_INT
-	int		0x20
-	mov		ax,		0xFF00
+	mov		ax,		0xFFFF
 	mov		bx,		SYSCALL_PIT_SET_FREQUENCY
 	int		0x20
 	call	draw_score
@@ -50,6 +46,21 @@ snake:
 	cli
 	movzx	cx,		byte[game_end]
 	jcxz	.lp
+.if_lose:
+	sti
+	call	draw_window_end
+	hlt
+	mov		bx,		SYSCALL_GET_KEYBOARD_DATA
+	int		0x20
+	test	al,		al
+	je		.if_lose
+	cmp		al,		0x1C	;scancode enter
+	jne		.exit
+	mov		byte[game_end],	0
+	mov		word[snake_pos], SNAKE_POS_DEFAULT
+	mov		word[snake_direction], SNAKE_TO_STOP
+	mov		word[score],	0
+	jmp		.start
 .exit:
 	mov		bx,		SYSCALL_VGA_CURSOR_ENABLE
 	int		0x20
@@ -65,10 +76,14 @@ snake_pos dw SNAKE_POS_DEFAULT ;x=16,y=15,vga_char_size=2
 snake_direction dw SNAKE_TO_STOP
 
 pit_handler:
+	cmp		byte[game_end],		1
+	je		.end
+
+	call	keyboard_routine
 	call	snake_move
 	call	check_wall_collision
 	call	check_fruit_collision
-
+.end:
 	mov     al,     PICM
 	out     PIC_EOI, al
 	iret
@@ -90,28 +105,27 @@ divisor_vga_row_size dw VGA_ROW_SIZE
 check_wall_collision:
 ;in:  bx=snake pos
 	mov		bx,		word[snake_pos]
-	mov		word[score],	bx
 	cmp		bx,		ROW_SIZE ;check up border
-	jl		.lose_window
+	jl		.lose
 
 	cmp		bx,		FINAL_ROW_POS ;check bottom border
-	jge		.lose_window
+	jge		.lose
 
 	xor		dx,		dx ;check right border
 	mov		ax,		bx
 	add		ax,		18
 	div		word[divisor_vga_row_size]
 	test	dx,		dx
-	je		.lose_window
+	je		.lose
 
 	xor		dx,		dx ;check left border
 	mov		ax,		bx
 	div		word[divisor_vga_row_size]
 	test	dx,		dx
-	je		.lose_window
+	je		.lose
 	retn
-.lose_window:
-	call	lose_window
+.lose:
+	mov		byte[game_end],		1
 	retn
 
 fruit_pos dw 0
@@ -160,42 +174,45 @@ check_fruit_collision:
 	retn
 
 keyboard_routine:
-	in		al,		0x60
-	cmp		al,		0x01	;ESC
-	jne		.if_not_esc
-	mov		word[snake_direction],	SNAKE_TO_STOP
-	jmp		.end
-.if_not_esc:
-	cmp		al,		0x11	;'W'
-	jne		.if_not_up
-	cmp		word[snake_direction],	SNAKE_TO_DOWN
+	mov		bx,		SYSCALL_GET_KEYBOARD_DATA
+	int		0x20
+	cmp		al,		0x01 ;ESC
+	je		.pause
+	cmp		al,		0x11 ;'W'
+	jne		.not_processing_w
+	mov		bx,		80
+	jmp		.processing
+.not_processing_w:
+	cmp		al,		0x20 ;'D'
+	ja		.not_wasd
+	movzx	bx,		al
+	sub		bx,		30
+	jl		.end
+	movsx	bx,		byte[.data_table + bx + 1]
+	jmp		.processing
+.not_wasd:
+	movzx	bx,		al
+	cmp		bx,		0xEC
+	ja		.end
+	sub		bx,		0xE9
+	jl		.end
+	movsx	bx,		byte[.data_table + bx]
+.processing:
+	cmp		word[snake_direction],	bx
 	je		.end
-	mov		word[snake_direction],	SNAKE_TO_UP
-	jmp		.end
-.if_not_up:
-	cmp		al,		0x1E	;'A'
-	jne		.if_not_left
-	cmp		word[snake_direction],	SNAKE_TO_RIGHT
-	je		.end
-	mov		word[snake_direction],	SNAKE_TO_LEFT
-	jmp		.end
-.if_not_left:
-	cmp		al,		0x1F	;'S'
-	jne		.if_not_down
-	cmp		word[snake_direction],	SNAKE_TO_UP
-	je		.end
-	mov		word[snake_direction],	SNAKE_TO_DOWN
-	jmp		.end
-.if_not_down:
-	cmp		al,		0x20	;'D'
-	jne		.end
-	cmp		word[snake_direction],	SNAKE_TO_LEFT
-	je		.end
-	mov		word[snake_direction],	SNAKE_TO_RIGHT
+	neg		bx
+	mov		word[snake_direction],	bx
+	retn
+.pause:
+	xor		ax,		ax
+	mov		word[snake_direction],	ax
 .end:
-	mov     al,     PICM
-	out     PIC_EOI, al
-	iret
+	retn
+.data_table:
+	db		80	;0, up
+	db		2	;1, left
+	db		-80	;2, down
+	db		-2	;3, right
 
 score_str db "S", 0x07, "C", 0x07, "O", 0x07, "R", 0x07, "E", 0x07
 	SCORE_STR_SIZE equ $-score_str
@@ -203,10 +220,11 @@ score_str db "S", 0x07, "C", 0x07, "O", 0x07, "R", 0x07, "E", 0x07
 	SCORE_STR_POS  equ 146
 score dw 0
 	SCORE_POS  equ 226
+score_uint_str times 5 db 0
 draw_score:
 	push	bx
 	mov		ax,		word[score]
-	mov		si,		score_str
+	mov		si,		score_uint_str
 	mov		bx,		SYSCALL_UINT_TO_ASCII
 	int		0x20
 	pop		bx
@@ -225,9 +243,53 @@ draw_score:
 	jne		.lp
 	retn
 
-lose_window:
-	mov		byte[game_end],		1
+game_end_str db "Y", 0x07, "o", 0x07, "u", 0x07, " ", 0x07, "l", 0x07
+			 db "o", 0x07, "s", 0x07, "e", 0x07
+	GAME_END_STR_SIZE equ $-game_end_str
+	GAME_END_STR_LEN  equ GAME_END_STR_SIZE / 2
+	GAME_END_STR_POS equ 344 ;4 row, 11 char
+draw_end_str db "F", 0x07, "o", 0x07, "r", 0x07, " ", 0x07, "r", 0x07
+			 db "e", 0x07, "s", 0x07, "t", 0x07, "a", 0x07, "r", 0x07,
+			 db "t", 0x07, " ", 0x07, "p", 0x07, "u", 0x07, "s", 0x07,
+			 db "h", 0x07, " ", 0x07, "E", 0x07, "N", 0x07, "T", 0x07,
+			 db "E", 0x07, "R", 0x07
+	DRAW_END_STR_SIZE equ $-draw_end_str
+	DRAW_END_STR_LEN  equ DRAW_END_STR_SIZE / 2
+	DRAW_END_STR_POS equ 490 ;6 row, 5 char
+draw_window_end:
+	mov		ax,		0x0723	;bg=black, fg=gray, char='#'
+	mov		cx,		28
+	mov		di,		164	;3 row, 3 char
+	rep		stosw	;ax -> es:di
 
+	sub		di,		2
+.lp_right:
+	add		di,		80
+	mov		word[es:di],	ax
+	cmp		di,		1818 ;22 row, 29 char
+	jne		.lp_right
+
+.lp_left:
+	sub		di,		2
+	mov		word[es:di],	ax
+	cmp		di,		1764 ;22 row, 3 char
+	jne		.lp_left
+
+.lp_up:
+	sub		di,		80
+	mov		word[es:di],	ax
+	cmp		di,		244 ;5 row, 4 char
+	jne		.lp_up
+
+	mov		si,		game_end_str
+	mov		di,		GAME_END_STR_POS
+	mov		cx,		GAME_END_STR_LEN
+	rep		movsw
+
+	mov		si,		draw_end_str
+	mov		di,		DRAW_END_STR_POS
+	mov		cx,		DRAW_END_STR_LEN
+	rep		movsw
 	retn
 
 draw_wall:

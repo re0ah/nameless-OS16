@@ -48,7 +48,19 @@ pit_set_frequency:
 	out		PIT_0_PORT,		al
 	retn
 
+;test_uint dw -1000
+;test_uint_str times 6 db " "
+
 pit_int:
+	pusha
+	;mov		si,		test_uint_str
+	;mov		ax,		word[test_uint]
+	;call	int_to_ascii
+	;call	tty_print_ascii
+	;inc		word[test_uint]
+	;mov		al,		' '
+	;call	tty_putchar_ascii
 	mov		al,		PICM
 	out		PIC_EOI, al
+	popa
 	iret

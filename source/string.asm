@@ -5,11 +5,12 @@ int_to_ascii:
 	cmp		ax,		0
 	jnl		.not_neg_num
 	neg		ax
-	mov		bl,		'-'
-	mov		byte[si],	bl
+	mov		byte[si],	'-'
 	inc		si
 .not_neg_num:
 	call	uint_to_ascii
+	dec		si
+	inc		cx
 	retn
 
 divinder_int_to_ascii dw 10
@@ -17,25 +18,20 @@ uint_to_ascii:
 ;in: ax=uint 
 ;	 si=ptr on str
 ;out:si=ascii str from number
-	push	si
+;	 cx=len of si
 	mov		di,		num_to_ascii_buf
+	mov		cx,		word[divinder_int_to_ascii]
+	mov		bl,		0x30
 .lp:
 	xor		dx,		dx
-	div		word[divinder_int_to_ascii]
+	div		cx
+	add		dl,		bl
+	mov		byte[di],	dl
+	inc		di
 	test	ax,		ax
-	je		.end
-	mov		bx,		ax
-	add		dl,		0x30
-	mov		byte[di],	dl
-	mov		ax,		bx
-	inc		di
-	jmp		.lp
-.end:
-	add		dl,		0x30
-	mov		byte[di],	dl
-	inc		di
-	mov		cx,		di
-	sub		cx,		num_to_ascii_buf
+	jne		.lp
+.end_lp:
+	lea		cx,		[di - num_to_ascii_buf]
 .lp2:
 	dec		di
 	mov		al,		byte[di]
@@ -43,9 +39,9 @@ uint_to_ascii:
 	inc		si
 	cmp		di,		num_to_ascii_buf
 	jne		.lp2
-	pop		si
+	sub		si,		cx
 	retn
-num_to_ascii_buf db "      "
+num_to_ascii_buf times 6 db " "
 
 str_to_fat12_filename:
 ;in:  si = str (in format name.ext or name (in this case will add BIN as ext))
@@ -53,40 +49,49 @@ str_to_fat12_filename:
 ;	if have not ext then add ext as BIN
 ;out: si = FAT12 name
 ;if cx > 8, then cx = 8
+	mov		di,		FAT12_STRLEN
+	call	str_to_caps
+	push	ds
 	cmp		cx,		FAT12_STRLEN_WITHOUT_EXT
+	setae	bl
 	jle		.check_strlen
 	mov		cx,		FAT12_STRLEN_WITHOUT_EXT
 .check_strlen:
 ;cp data input to FAT12_STR
-	mov		ax,		cx
-	mov		bx,		FAT12_STRLEN
-	sub		bx,		cx
 	mov		di,		FAT12_STR
-	mov		cx,		FAT12_STRLEN_WITHOUT_EXT 
-	rep		movsb	;ds:si -> es:di
+	add		cx,		di ;end of str
+.cp:
+	lodsb	;ds:si -> al
+	cmp		al,		'.'
+	je		.if_ext
+	stosb	;es:di <- al
+	cmp		di,		cx
+	jne		.cp
 
-	mov		si,		FAT12_STR_ONLY_BIN
-	mov		cx,		bx
-	add		si,		ax
-	mov		di,		FAT12_STR
-	add		di,		ax
-	push	ds
 	mov		ax,		KERNEL_OFFSET
 	mov		ds,		ax
-	rep		movsb	;ds:si -> es:di
-
-	mov		si,		FAT12_STR
-	mov		di,		FAT12_STRLEN_WITHOUT_EXT
-	call	str_to_caps
+	mov		si,		FAT12_STR_ONLY_BIN
+	cmp		bl,		1
+	je		.cp_ext
+.if_ext:
+	mov		al,		' '
+.fill_space:
+	stosb
+	cmp		di,		FAT12_STR + FAT12_STRLEN
+	jne		.fill_space
+	mov		di,		FAT12_EXT
+.cp_ext:
+	movsb
+	cmp		di,		FAT12_STR + FAT12_STRLEN
+	jne		.cp_ext
 	pop		ds
-
 	retn
 
-FAT12_STR times 11 db 0x20
+FAT12_STR times 11 db ' '
 	FAT12_STRLEN equ $-FAT12_STR
 	FAT12_STRLEN_WITHOUT_EXT equ FAT12_STRLEN - 3
 	FAT12_EXT equ FAT12_STR + 8
-FAT12_STR_ONLY_BIN	db "        BIN"
+FAT12_STR_ONLY_BIN	db "BIN"
 
 str_to_caps:
 ;in:  si = str
@@ -133,19 +138,16 @@ scancode_to_ascii:
 	cmp		al,		0x35
 	ja		.not_printable
 	movzx	bx,		al
-	add		bx,		SCANCODE_SET_WITH_SHIFT
-	mov		al,		byte[bx]
+	mov		al,		byte[bx + SCANCODE_SET_WITH_SHIFT]
 	call	if_caps
 	jcxz	.caps_not_set
 	call	caps_to_char
 	retn
-	
 .if_shift_not_pressed:
 	cmp		al,		0x53
 	ja		.not_printable
 	movzx	bx,		al
-	add		bx,		SCANCODE_SET
-	mov		al,		byte[bx]
+	mov		al,		byte[bx + SCANCODE_SET]
 	call	if_caps
 	jcxz	.caps_not_set
 	call	char_to_caps

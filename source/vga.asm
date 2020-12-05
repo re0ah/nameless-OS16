@@ -97,13 +97,15 @@ vga_clear_screen:
 ;	  cx = 0
 ;	  bx = word[vga_pos_cursor]
 ;	  dx = 0x03D5
-	mov		ax,		0x0720 ;bg=black, fg=gray, char=' '
+	mov		ah,		byte[vga_color]
+	mov		al,		' '
 	xor		di,		di
 	mov		cx,		VGA_PAGE_NUM_CHARS
 	rep		stosw	;ax -> es:di
 
-	mov		word[vga_pos_cursor], 0
-	call	vga_cursor_move
+	xor		bx,		bx
+	mov		word[vga_pos_cursor], bx
+	call	vga_cursor_move.without_get_pos_cursor
 	retn
 
 vga_page_now db 0

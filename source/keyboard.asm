@@ -3,8 +3,8 @@ PIC_EOI		   equ 0x20	;end of interrupt code
 KB_DATA_PORT   equ 0x60
 KB_STATUS_PORT equ 0x64
 
-KB_BUF_SIZE   equ 32
-kb_buf		  db KB_BUF_SIZE 
+KB_BUF_SIZE   equ 64
+kb_buf		  times KB_BUF_SIZE db 0
 kb_buf_pos	  db 0
 
 ;LED status bitset:
@@ -61,18 +61,18 @@ keyboard_int:
 	call	keyboard_wait_port
 	in		al,		KB_DATA_PORT ;get scancode
 
-;	cmp		al,		0xFF
-;	je		.exit
-;	cmp		al,		0xFE
-;	je		.exit
-;	cmp		al,		0x00
-;	je		.exit
-;	cmp		al,		0xEE
-;	je		.exit
-;	cmp		al,		0xAA
-;	je		.exit
-;	cmp		al,		0xFA
-;	je		.exit
+	cmp		al,		0xFF
+	je		.exit
+	cmp		al,		0xFE
+	je		.exit
+	cmp		al,		0x00
+	je		.exit
+	cmp		al,		0xEE
+	je		.exit
+	cmp		al,		0xAA
+	je		.exit
+	cmp		al,		0xFA
+	je		.exit
 
 	cmp		al,		0xE0	;spec scancode
 	je		kb_spec_scancode
@@ -93,16 +93,39 @@ kb_spec_scancode:
 	;pg dn make = e0, 51
 	cmp		al,		0x49
 	jne		.not_pg_up_make
-	call	vga_page_up
-	pop		ds
-	mov		al,		PICM
-	out		PIC_EOI, al
-	iret
+	mov		al,		SCANCODE_OS_MAKE_PG_UP
+	call	push_kb_buf
+	jmp		.end
 .not_pg_up_make:
 	cmp		al,		0x51
 	jne		.not_page_down_make
-	call	vga_page_down
+	mov		al,		SCANCODE_OS_MAKE_PG_DOWN
+	call	push_kb_buf
+	jmp		.end
 .not_page_down_make:
+	cmp		al,		0x48
+	jne		.not_make_up_arrow
+	mov		al,		SCANCODE_OS_MAKE_UP_ARROW 
+	call	push_kb_buf
+	jmp		.end
+.not_make_up_arrow:
+	cmp		al,		0x4B
+	jne		.not_make_left_arrow
+	mov		al,		SCANCODE_OS_MAKE_LEFT_ARROW
+	call	push_kb_buf
+	jmp		.end
+.not_make_left_arrow:
+	cmp		al,		0x50
+	jne		.not_make_down_arrow
+	mov		al,		SCANCODE_OS_MAKE_DOWN_ARROW
+	call	push_kb_buf
+	jmp		.end
+.not_make_down_arrow:
+	cmp		al,		0x4D
+	jne		.not_make_right_arrow
+	mov		al,		SCANCODE_OS_MAKE_RIGHT_ARROW  
+	call	push_kb_buf
+.not_make_right_arrow:
 .end:
 	pop		ds
 	mov		al,		PICM
@@ -252,6 +275,133 @@ if_caps:
 	mov		cl,		byte[kb_led_status]
 	and		cl,		KB_LED_CAPS
 	retn
+
+KB_SCANCODE:;That not scancode's of hardware, that scancodes OS.
+			;Need for simple store spec scancodes.
+			;Used scancodes what's not used by hardware
+			;All another scancodes same as hardware
+SCANCODE_OS_MAKE_L_GUI equ 0x5B
+	db SCANCODE_OS_MAKE_L_GUI ;hardware=(E0, 5B)
+
+SCANCODE_OS_BREAK_L_GUI equ 0xDB
+	db SCANCODE_OS_BREAK_L_GUI ;hardware=(E0, DB)
+
+SCANCODE_OS_MAKE_R_CTRL equ 0xA9
+	db SCANCODE_OS_MAKE_R_CTRL ;hardware=(E0, 1D)
+
+SCANCODE_OS_BREAK_R_CTRL equ 0xD4
+	db SCANCODE_OS_BREAK_R_CTRL ;hardware=(E0, 9D)
+
+SCANCODE_OS_MAKE_R_GUI equ 0x5C
+	db SCANCODE_OS_MAKE_R_GUI ;hardware=(E0, 5C)
+
+SCANCODE_OS_BREAK_R_GUI equ 0xDC
+	db SCANCODE_OS_BREAK_R_GUI ;hardware=(E0, DC)
+
+SCANCODE_OS_MAKE_R_ALT equ 0xD5
+	db SCANCODE_OS_MAKE_R_ALT ;hardware=(E0, 38)
+
+SCANCODE_OS_BREAK_R_ALT equ 0xD6
+	db SCANCODE_OS_BREAK_R_ALT ;hardware=(E0, B9)
+
+SCANCODE_OS_MAKE_HOME equ 0xD9
+	db SCANCODE_OS_MAKE_HOME ;hardware=(E0, 47)
+
+SCANCODE_OS_BREAK_HOME equ 0xDA
+	db SCANCODE_OS_BREAK_HOME ;hardware=(E0, 97)
+
+SCANCODE_OS_MAKE_INSERT equ 0xDE
+	db SCANCODE_OS_MAKE_INSERT ;hardware=(E0, 52)
+
+SCANCODE_OS_BREAK_INSERT equ 0xDF
+	db SCANCODE_OS_BREAK_INSERT ;hardware=(E0, D2)
+
+SCANCODE_OS_MAKE_PG_UP equ 0xE1
+	db SCANCODE_OS_BREAK_INSERT ;hardware=(E0, 49)
+
+SCANCODE_OS_BREAK_PG_UP equ 0xE2
+	db SCANCODE_OS_BREAK_INSERT ;hardware=(E0, C9)
+
+SCANCODE_OS_MAKE_DELETE equ 0xE3
+	db SCANCODE_OS_MAKE_DELETE ;hardware=(E0, 53)
+
+SCANCODE_OS_BREAK_DELETE equ 0xE4
+	db SCANCODE_OS_BREAK_DELETE ;hardware=(E0, D3)
+
+SCANCODE_OS_MAKE_END equ 0xE5
+	db SCANCODE_OS_MAKE_END ;hardware=(E0, 4F)
+
+SCANCODE_OS_BREAK_END equ 0xE6
+	db SCANCODE_OS_BREAK_END ;hardware=(E0, CF)
+
+SCANCODE_OS_MAKE_PG_DOWN equ 0xE7
+	db SCANCODE_OS_MAKE_PG_DOWN ;hardware=(E0, 51)
+
+SCANCODE_OS_BREAK_PG_DOWN equ 0xE8
+	db SCANCODE_OS_BREAK_PG_DOWN ;hardware=(E0, D1)
+
+SCANCODE_OS_MAKE_UP_ARROW equ 0xE9
+	db SCANCODE_OS_MAKE_UP_ARROW ;hardware=(E0, 48)
+
+SCANCODE_OS_MAKE_LEFT_ARROW equ 0xEA
+	db SCANCODE_OS_MAKE_LEFT_ARROW ;hardware=(E0, 4B)
+
+SCANCODE_OS_MAKE_DOWN_ARROW equ 0xEB
+	db SCANCODE_OS_MAKE_DOWN_ARROW ;hardware=(E0, 50)
+
+SCANCODE_OS_MAKE_RIGHT_ARROW equ 0xEC
+	db SCANCODE_OS_MAKE_RIGHT_ARROW ;hardware=(E0, 4D)
+
+SCANCODE_OS_BREAK_UP_ARROW equ 0xED
+	db SCANCODE_OS_BREAK_UP_ARROW ;hardware=(E0, C8)
+
+SCANCODE_OS_BREAK_LEFT_ARROW equ 0xEF
+	db SCANCODE_OS_BREAK_LEFT_ARROW ;hardware=(E0, CB)
+
+SCANCODE_OS_BREAK_DOWN_ARROW equ 0xF0
+	db SCANCODE_OS_BREAK_DOWN_ARROW ;hardware=(E0, D0)
+
+SCANCODE_OS_BREAK_RIGHT_ARROW equ 0xF1
+	db SCANCODE_OS_BREAK_RIGHT_ARROW ;hardware=(E0, CD)
+
+SCANCODE_OS_MAKE_KP_DIV equ 0xF2
+	db SCANCODE_OS_MAKE_KP_DIV ;hardware=(E0, 35)
+
+SCANCODE_OS_BREAK_KP_DIV equ 0xF3
+	db SCANCODE_OS_BREAK_KP_DIV ;hardware=(E0, B5)
+
+SCANCODE_OS_MAKE_KP_EN equ 0xF4
+	db SCANCODE_OS_MAKE_KP_EN ;hardware=(E0, 1C)
+
+SCANCODE_OS_BREAK_KP_EN equ 0xF5
+	db SCANCODE_OS_BREAK_KP_EN ;hardware=(E0, 9C)
+
+SCANCODE_OS_MAKE_PRINT equ 0xF6
+	db SCANCODE_OS_MAKE_PRINT ;hardware=(E0, 2A, E0, 37)
+
+SCANCODE_OS_BREAK_PRINT equ 0xF7
+	db SCANCODE_OS_BREAK_PRINT ;hardware=(E0, B7, E0, AA)
+
+SCANCODE_OS_MAKE_PAUSE equ 0xF8
+	db SCANCODE_OS_MAKE_PAUSE ;hardware=(E1, 1D, 45, E1, 9D, C5)
+
+SCANCODE_OS_MAKE_POWER equ 0xF9
+	db SCANCODE_OS_MAKE_POWER ;hardware=(E0, 5E)
+
+SCANCODE_OS_BREAK_POWER equ 0xFA
+	db SCANCODE_OS_BREAK_POWER ;hardware=(E0, DE)
+
+SCANCODE_OS_MAKE_SLEEP equ 0xFB
+	db SCANCODE_OS_MAKE_SLEEP ;hardware=(E0, 5F)
+
+SCANCODE_OS_BREAK_SLEEP equ 0xFC
+	db SCANCODE_OS_BREAK_SLEEP ;hardware=(E0, DF)
+
+SCANCODE_OS_MAKE_WAKE equ 0xFD
+	db SCANCODE_OS_MAKE_WAKE ;hardware=(E0, 63)
+
+SCANCODE_OS_BREAK_WAKE equ 0xFE
+	db SCANCODE_OS_BREAK_WAKE ;hardware=(E0, E3)
 
 SCANCODE_SET:;(XT SCANCODE SET)
 	db 0x00	;				 #00

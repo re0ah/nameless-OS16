@@ -2,7 +2,7 @@ bits 16
 %include "kernel.inc"
 tty_start:
 	mov		ax,		VGA_BUFFER
-	mov		es,		ax		;es - video segment now
+	mov		es,		ax
 	mov		byte[vga_color], 0x07
 
 	call	vga_clear_screen
@@ -24,6 +24,16 @@ tty_start:
 	call	tty_push_backspace
 	jmp		.input
 .not_backspace:
+	cmp		al,		SCANCODE_OS_MAKE_PG_UP
+	jne		.not_page_up
+	call	vga_page_up
+	jmp		.input
+.not_page_up:
+	cmp		al,		SCANCODE_OS_MAKE_PG_DOWN
+	jne		.not_page_down
+	call	vga_page_down
+	jmp		.input
+.not_page_down:
 	call	scancode_to_ascii
 	call	tty_putchar_ascii
 
@@ -64,6 +74,7 @@ tty_print_ascii:
 	loop	.lp
 	retn
 
+tty_next_row_div_v db 160
 tty_next_row:
 ;in:  
 ;out: al = bh
@@ -72,14 +83,11 @@ tty_next_row:
 ;	  dx = 0x03D5
 ;need calc the row now, inc and mul to 80 * VGA_CHAR_SIZE
 	mov		ax,		word[vga_pos_cursor]
-	mov		bl,		160
-	div		bl
+	div		byte[tty_next_row_div_v]
 	xor		ah,		ah
 
 	inc		ax
 
-	;mov		bl,		160
-	;mul		bl
 	shl		ax,		5
 	mov		cx,		ax
 	shl		ax,		2
@@ -88,7 +96,8 @@ tty_next_row:
 	mov		word[vga_pos_cursor],	ax
 	mov		word[tty_input_start],	ax
 
-	call	vga_cursor_move
+	mov		bx,		ax
+	call	vga_cursor_move.without_get_pos_cursor
 	retn
 
 get_tty_input_ascii:
@@ -96,10 +105,14 @@ get_tty_input_ascii:
 ;	  es = segment where save ascii
 ;out: si = str
 ;	  cx = str len
+;     bp = word[tty_input_start]
+	mov		si,		word[tty_input_start]
+.without_get_tty_input_start:
+	mov		cx,		word[vga_pos_cursor]
+.without_both:
+	mov		bp,		si
 	push	ds
 
-	mov		cx,		word[vga_pos_cursor]
-	mov		si,		word[tty_input_start]
 	mov		ax,		VGA_BUFFER	
 	mov		ds,		ax
 .lp:
@@ -109,7 +122,8 @@ get_tty_input_ascii:
 	jl		.lp
 
 	pop		ds
-	sub		cx,		word[tty_input_start]
+;	sub		cx,		word[tty_input_start]
+	sub		cx,		bp
 	shr		cx,		1
 	retn
 
@@ -121,40 +135,43 @@ tty_push_enter:
 	sub		sp,		0x400	;alloc 1024 bytes on stack
 
 ;1. save user input on stack
+	mov		si,		ax	;tty_input_start
 	mov		ax,		STACK_OFFSET
 	mov		es,		ax
 	mov		di,		sp
-	call	get_tty_input_ascii
+	call	get_tty_input_ascii.without_get_tty_input_start
 	mov		ax,		VGA_BUFFER
 	mov		es,		ax
 
 	mov		si,		sp
 	push	es
 	push	ds
-	pop		es
-	push	ds
+	mov		ax,		ds
+	mov		es,		ax
 	mov		ax,		ss
 	mov		ds,		ax
 	call	str_to_fat12_filename
 	pop		ds
+	;clear stack
+	mov		ax,		ss
+	mov		es,		ax
+	mov		cx,		0x400
+	mov		di,		sp
+	add		di,		2
+	xor		al,		al
+	rep		stosb
 	pop		es
 	add		sp,		0x400	;free stack
+
+	mov		si,		FAT12_STR
+	mov		cx,		FAT12_STRLEN
+	call	tty_print_ascii
 
 	mov		si,		FAT12_STR
 	call	execve
 	test	ax,		ax
 	je		.execve_success
-;test input on screen
-;	mov		cx,		11
-;	mov		si,		FAT12_STR
-;.lp:
-;	mov		al,		byte[ds:si]
-;	inc		si
-;	call	tty_putchar_ascii
-;	loop	.lp
-;	mov		ax,		KERNEL_OFFSET
-;	mov		ds,		ax
-	call	tty_next_row
+
 	mov		si,		BAD_COMMAND_MSG
 	mov		cx,		BAD_COMMAND_MSG_SIZE
 	call	tty_print_ascii
@@ -196,7 +213,7 @@ tty_print_path:
 HELLO_MSG db "namelessOS16 v 4", 0x0A
 	HELLO_MSG_SIZE equ $-HELLO_MSG
 
-BAD_COMMAND_MSG db "command not found"
+BAD_COMMAND_MSG db 0x0A, "command not found"
 	BAD_COMMAND_MSG_SIZE equ $-BAD_COMMAND_MSG
 
 tty_input_start dw 0

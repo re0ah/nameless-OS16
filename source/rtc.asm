@@ -91,57 +91,49 @@ rtc_get_ascii_sec:
 ;in:  si = address where save time
 ;out: al = century from CMOS
 	call	rtc_get_sec
-	call	BCD_to_ascii_2_bytes
-	retn
+	jmp		BCD_to_ascii_2_bytes
 
 rtc_get_ascii_min:
 ;in:  si = address where save time
 ;out: al = century from CMOS
 	call	rtc_get_min
-	call	BCD_to_ascii_2_bytes
-	retn
+	jmp		BCD_to_ascii_2_bytes
 
 rtc_get_ascii_hour:
 ;in:  si = address where save time
 ;out: al = century from CMOS
 	call	rtc_get_hour
-	call	BCD_to_ascii_2_bytes
-	retn
+	jmp		BCD_to_ascii_2_bytes
 
 rtc_get_ascii_week:
 ;in:  si = address where save time
 ;out: al = century from CMOS
 	call	rtc_get_week
-	call	BCD_to_ascii_2_bytes
-	retn
+	jmp		BCD_to_ascii_2_bytes
 
 rtc_get_ascii_day:
 ;in:  si = address where save time
 ;out: al = century from CMOS
 	call	rtc_get_day
-	call	BCD_to_ascii_2_bytes
-	retn
+	jmp		BCD_to_ascii_2_bytes
 
 rtc_get_ascii_month:
 ;in:  si = address where save time
 ;out: al = century from CMOS
 	call	rtc_get_month
-	call	BCD_to_ascii_2_bytes
-	retn
+	jmp		BCD_to_ascii_2_bytes
 
 rtc_get_ascii_year:
 ;in:  si = address where save time
 ;out: al = century from CMOS
 	call	rtc_get_year
-	call	BCD_to_ascii_2_bytes
-	retn
+	jmp		BCD_to_ascii_2_bytes
 
 rtc_get_ascii_century:
 ;in:  si = address where save time
 ;out: al = century from CMOS
 	call	rtc_get_century
-	call	BCD_to_ascii_2_bytes
-	retn
+;	jmp		BCD_to_ascii_2_bytes
 
 BCD_to_ascii_2_bytes:
 ;in:  al = BCD byte
