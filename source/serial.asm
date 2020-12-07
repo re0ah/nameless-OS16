@@ -31,6 +31,9 @@ IRQ_COM3 equ 0x04
 IRQ_COM4 equ 0x03
 
 serial_init:
+;in:  
+;out: al = 0x0B
+;	  dx = COM1_PORT + COM_MCR
 ;disable interrupts of com port
 	mov		al,		0x00
 	mov		dx,		COM1_PORT + COM_IER
@@ -66,6 +69,9 @@ serial_init:
 
 serial_received:
 ;check if data ready (LSR bit 0)
+;in:  
+;out: al = 0x00 if have not data, 0x01 if have
+;	  dx = COM1_PORT + COM_LSR
 	mov		dx,		COM1_PORT + COM_LSR
 	in		al,		dx
 	and		al,		0x01
@@ -73,6 +79,9 @@ serial_received:
 
 read_serial:
 ;read while data ready
+;in:  
+;out: al = data from com port
+;	  dx = COM1_PORT + COM_RBR
 	call	serial_received
 	test	al,		al
 	je		read_serial
@@ -81,13 +90,18 @@ read_serial:
 	retn
 
 is_transmit_empty:
+;in:  
+;out: al = 0x00 if transmit is empty, else 0x20
+;	  dx = COM1_PORT + COM_LSR
 	mov		dx,		COM1_PORT + COM_LSR
 	in		al,		dx
 	and		al,		0x20
 	retn
 
 write_serial:
-;in: al=char
+;in:  al = char
+;out: al = char
+;	  dx = COM1_PORT + COM_THR
 	push	ax
 	call	is_transmit_empty
 	test	al,		al

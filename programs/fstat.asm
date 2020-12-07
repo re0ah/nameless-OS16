@@ -4,6 +4,7 @@ bits 16
 FAT12_ENTRY_NOT_FOUND equ 0xFFFF
 
 fstat:
+	jmp		get_fname_from_argv
 	mov		bx,		SYSCALL_FAT12_FILE_SIZE
 	mov		si,		tst
 	int		0x20
@@ -36,6 +37,23 @@ fstat:
 	int		0x20
 	retf
 
+get_fname_from_argv:
+	mov		si,		bp
+.count:
+	mov		al,		byte[ss:si]
+	inc		si
+	test	al,		al
+	je		.end
+	cmp		al,		' '
+	jne		.count
+.end:
+	sub		si,		bp
+	mov		cx,		si
+	mov		si,		bp
+	mov		bx,		SYSCALL_TTY_PRINT_ASCII
+	int		0x20
+	retf
+
 print_fsize:
 ;in: ax = size
 	mov		si,		str1
@@ -55,6 +73,6 @@ str1 db "       " ;2097152 = 2^12 * 512
 	 STR_SIZE_SIZE equ $ - str_size
 
 str_name db 0x0A, "File: "
-tst db "LS      BIN"
+tst db "FNAME   BIN"
 	db 0x0A
 	STR_FNAME_SIZE equ $ - str_name

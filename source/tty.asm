@@ -36,41 +36,64 @@ tty_start:
 .not_page_down:
 	call	scancode_to_ascii
 	call	tty_putchar_ascii
-
 	jmp		.input
 	retn
 
 tty_putchar_ascii:
 ;in:  al = ASCII
-;out: ax = vga_char (al = ASCII, ah = color)
-;	  bx = word[vga_pos_cursor]
+;out: if al == 0, then:
+;		 al = 0
+;	  if al == 0x0A, then:
+;		 al = bh
+;		 bx = word[vga_pos_cursor] / 2
+;		 cx = (num_of_row + 1) * 80
+;		 dx = 0x03D5
+;	  else:
+;		 ah = byte[vga_color]
+;		 al = bh
+;		 bx = word[vga_pos_cursor] / 2
+;		 dx = 0x03D5
 	test	al,		al
 	je		.end
 	cmp		al,		0x0A	;'\n'
 	je		.new_line
-	mov		ah,		byte[vga_color]
+	mov		ah,		byte[vga_color]		;ax vga_char now
 	mov		bx,		word[vga_pos_cursor]
-	mov		word[es:bx],	ax
-	add		word[vga_pos_cursor], VGA_CHAR_SIZE
-	call	vga_cursor_move
+	mov		word[es:bx],	ax			;print in video buffer
+	add		bx,		VGA_CHAR_SIZE
+	mov		word[vga_pos_cursor], bx
+	call	vga_cursor_move.without_get_pos_cursor_with_div
 .end:
 	retn
 .new_line:
-	pusha
 	call	tty_next_row
-	popa
 	retn
 
 tty_print_ascii:
 ;in:  si = ptr to str
 ;	  cx = len of str
-;out: si = end of str
-;	  cx = 0
-;	  ax = vga_char of last symbol in si (al = ASCII, ah = color)
-;	  bx = word[vga_pos_cursor]
+;out: if last_char == 0, then:
+;		 al = 0
+;		 si = end of str
+;		 cx = 0
+;	  if last_char == 0x0A, then:
+;		 al = bh
+;		 bx = word[vga_pos_cursor] / 2
+;		 cx = (num_of_row + 1) * 80
+;		 dx = 0x03D5
+;		 si = end of str
+;	  else:
+;		 ah = byte[vga_color]
+;		 al = bh
+;		 bx = word[vga_pos_cursor] / 2
+;		 dx = 0x03D5
+;		 si = end of str
+;		 cx = 0
 .lp:
 	lodsb	;al <- ds:si
+	push	cx
 	call	tty_putchar_ascii
+	pop		cx
 	loop	.lp
 	retn
 
@@ -78,8 +101,8 @@ tty_next_row_div_v db 160
 tty_next_row:
 ;in:  
 ;out: al = bh
-;	  bx = word[vga_pos_cursor]
-;	  cx = (num_of_row + 1) * 32
+;	  bx = word[vga_pos_cursor] / 2
+;	  cx = (num_of_row + 1) * 80
 ;	  dx = 0x03D5
 ;need calc the row now, inc and mul to 80 * VGA_CHAR_SIZE
 	mov		ax,		word[vga_pos_cursor]
@@ -105,45 +128,61 @@ get_tty_input_ascii:
 ;	  es = segment where save ascii
 ;out: si = str
 ;	  cx = str len
-;     bp = word[tty_input_start]
+;     bx = word[tty_input_start]
+;	  al = 0
 	mov		si,		word[tty_input_start]
 .without_get_tty_input_start:
 	mov		cx,		word[vga_pos_cursor]
 .without_both:
-	mov		bp,		si
+	mov		bx,		si
+	push	es
+	mov		ax,		STACK_OFFSET
+	mov		es,		ax
 	push	ds
 
+	xor		bp,		bp		;for args
 	mov		ax,		VGA_BUFFER	
 	mov		ds,		ax
 .lp:
 	lodsw	;ax (vga char)   <- ds:si, si += 2
+	cmp		al,		' '
+	jne		.not_space
+	test	bp,		bp
+	jne		.already_set
+	lea		bp,		[di + 1] ;set bp after space now
+.already_set:
+.not_space:
 	stosb	;al (ascii char) -> es:di, di += 1
 	cmp		si,		cx
 	jl		.lp
+	xor		al,		al
+	stosb
 
 	pop		ds
-;	sub		cx,		word[tty_input_start]
-	sub		cx,		bp
-	shr		cx,		1
+	pop		es
 	retn
 
 tty_push_enter:
+;it's very very very bad code kill me
 	mov		ax,		word[tty_input_start]
-	cmp		ax,		word[vga_pos_cursor]
+	mov		cx,		word[vga_pos_cursor]
+	cmp		ax,		cx
 	je		.exit	;if has not input
+	mov		dx,		cx	;len of input
+	sub		dx,		ax
+	shr		dx,		1
 
-	sub		sp,		0x400	;alloc 1024 bytes on stack
+	sub		sp,		dx		;alloc dx bytes on stack
+	sub		sp,		6
 
 ;1. save user input on stack
-	mov		si,		ax	;tty_input_start
-	mov		ax,		STACK_OFFSET
-	mov		es,		ax
+	mov		si,		ax	;word[tty_input_start]
 	mov		di,		sp
-	call	get_tty_input_ascii.without_get_tty_input_start
-	mov		ax,		VGA_BUFFER
-	mov		es,		ax
+	call	get_tty_input_ascii.without_both
 
 	mov		si,		sp
+	mov		cx,		dx
+	push	dx
 	push	es
 	push	ds
 	mov		ax,		ds
@@ -152,23 +191,29 @@ tty_push_enter:
 	mov		ds,		ax
 	call	str_to_fat12_filename
 	pop		ds
-	;clear stack
-	mov		ax,		ss
-	mov		es,		ax
-	mov		cx,		0x400
-	mov		di,		sp
-	add		di,		2
-	xor		al,		al
-	rep		stosb
 	pop		es
-	add		sp,		0x400	;free stack
 
-	mov		si,		FAT12_STR
-	mov		cx,		FAT12_STRLEN
-	call	tty_print_ascii
+;	mov		si,		FAT12_STR
+;	mov		cx,		FAT12_STRLEN
+;	call	tty_print_ascii
 
 	mov		si,		FAT12_STR
 	call	execve
+	mov		bp,		ax
+	pop		dx
+	;clear stack
+	mov		di,		sp
+	push	es
+	mov		ax,		ss
+	mov		es,		ax
+	mov		cx,		dx
+	xor		al,		al
+	rep		stosb
+	pop		es
+	add		sp,		dx
+	add		sp,		6
+
+	mov		ax,		bp
 	test	ax,		ax
 	je		.execve_success
 

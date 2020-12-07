@@ -37,7 +37,8 @@ pit_init:
 pit_frequency dw PIT_DEFAULT_FREQUENCY / 32
 
 pit_set_frequency:
-;in: ax = frequency
+;in:  ax = frequency
+;out: al = ah
 	mov		word[pit_frequency],	ax
 	push	ax
 	mov		al,		PIT_CONTROL_WORD_FORMAT

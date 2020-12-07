@@ -92,10 +92,11 @@ vga_set_video_mode:
 
 vga_clear_screen:
 ;in:
-;out: ax = 0x0720
+;out: ah = byte[vga_color]
+;	  al = 0
 ;	  di = 0
 ;	  cx = 0
-;	  bx = word[vga_pos_cursor]
+;	  bx = 0
 ;	  dx = 0x03D5
 	mov		ah,		byte[vga_color]
 	mov		al,		' '
@@ -137,10 +138,11 @@ vga_page_down:
 
 vga_cursor_move:
 ;in:  
-;out: bx = word[vga_pos_cursor]
+;out: bx = word[vga_pos_cursor] / 2
 ;	  dx = 0x03D5
 ;	  al = bh
 	mov		bx,		word[vga_pos_cursor]
+.without_get_pos_cursor_with_div:
 	shr		bx,		1	;div to VGA_CHAR_SIZE
 .without_get_pos_cursor:
 	mov		dx,		CURSOR_DATA

@@ -11,30 +11,27 @@ kernel:
 	mov		ax,		STACK_OFFSET
 	mov		ss,		ax
 	mov		sp,		0xFFFF
-
-	mov		ax,		KERNEL_OFFSET
+;init data segment
+	call	load_isr ;from load_isr return ax = KERNEL_OFFSET
+;	mov		ax,		KERNEL_OFFSET
 	mov		ds,		ax
-
-	call	load_isr
+;init isr & com port
 	call	serial_init
 .to_tty:
 	call	tty_start
-
-	jmp		.to_tty
+	jmp		0xFFFF:0000 ;reboot
 
 PROCESS_OFFSET equ 0x3000
 execve:
 ;in: ds:si = name of file
-;	 ??? args? later
+;	 ss:bp = args
 ;out:
 ;need load the fat12, found entry and load to bin to memory on PROCESS_OFFSET
-;also DOESN'T CHANGE SEGMENT
-;kernel functions calls throught [KERNEL_OFFSET:FUNC_ADDR], list of the func
-;															on the kernel.inc
+;kernel functions calls throught syscall 0x20, list in the kernel.inc
 	call	fat12_find_entry
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
 	je		.end
-	call	save_interrupts
+	call	save_interrupts ;pit & keyboard
 	push	es
 	mov		si,		PROCESS_OFFSET
 	mov		es,		si
@@ -53,7 +50,6 @@ execve:
 .end:
 	retn
 
-%include "arg.asm"
 %include "vga.asm"
 %include "tty.asm"
 %include "fs.asm"
@@ -61,5 +57,6 @@ execve:
 %include "string.asm"
 %include "random.asm"
 %include "serial.asm"
+%include "rtc.asm"
 
 KERNEL_SIZE equ $

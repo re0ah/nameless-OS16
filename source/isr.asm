@@ -14,6 +14,8 @@ ISR_ADDR_KEYBOARD_SEGMENT equ 0x0026
 ISR_ADDR_SYSCALL_FUNC	  equ 0x0080 ;int 0x20 
 ISR_ADDR_SYSCALL_SEGMENT  equ 0x0082
 load_isr:
+;in:
+;out: ax = KERNEL_OFFSET
 ;init devices and set isr function and segment, set syscall
 	cli
 	call	pit_init
@@ -99,63 +101,66 @@ restore_interrupts:
 %include "syscall.inc"
 ;bx - number of syscall
 syscall:
+;in:  bx = number of syscall
+;out: depending on syscall
 	push	gs
 	push	ax
 	mov		ax,		KERNEL_OFFSET
-	mov		gs,		ax
+	mov		gs,		ax	;throught gs segment get address from table
 	pop		ax
-	mov		bx,		word[gs:bx + syscall_jump_table]
+	mov		bx,		word[gs:bx + .jump_table]
 	pop		gs
 	call	bx
 	iret
-
-%include "rtc.asm"
-
-syscall_jump_table:
-	dw		_interrupt_vga_clear_screen		;#1
-	dw		vga_cursor_disable				;#2
-	dw		vga_cursor_enable				;#3
-	dw		_interrupt_vga_cursor_move		;#4
-	dw		vga_set_video_mode				;#5
-	dw		_interrupt_tty_putchar_ascii	;#6
-	dw		_interrupt_tty_print_ascii		;#7
-	dw		_interrupt_tty_next_row			;#8
-	dw		fat12_read_root					;#9
-	dw		fat12_find_entry				;#10
-	dw		fat12_load_entry				;#11
-	dw		fat12_file_size					;#12
-	dw		fat12_file_entry_size			;#13
-	dw		_interrupt_pit_set_frequency	;#14
-	dw		_interrupt_pit_get_frequency	;#15
-	dw		_interrupt_get_keyboard_input	;#16
-	dw		_interrupt_wait_keyboard_input	;#17
-	dw		_interrupt_scancode_to_ascii	;#18
-	dw		_interrupt_int_to_ascii			;#19
-	dw		_interrupt_uint_to_ascii		;#20
-	dw		_interrupt_set_pit_int			;#21
-	dw		_interrupt_set_keyboard_int		;#22
-	dw		_interrupt_rand_int				;#23
-	dw		_interrupt_set_rand_seed		;#24
-	dw		rtc_get_sec						;#25
-	dw		rtc_get_min						;#26
-	dw		rtc_get_hour					;#27
-	dw		rtc_get_day						;#28
-	dw		rtc_get_month					;#29
-	dw		rtc_get_year					;#30
-	dw		rtc_get_century					;#31
-	dw		rtc_get_week					;#32
-	dw		rtc_get_ascii_sec				;#33
-	dw		rtc_get_ascii_min				;#34
-	dw		rtc_get_ascii_hour				;#35
-	dw		rtc_get_ascii_day				;#36
-	dw		rtc_get_ascii_month				;#37
-	dw		rtc_get_ascii_year				;#38
-	dw		rtc_get_ascii_century			;#39
-	dw		rtc_get_ascii_week				;#40
-	dw		_interrupt_get_argc				;#41
-	dw		_interrupt_get_argv				;#42
+.jump_table:
+	dw		_interrupt_vga_clear_screen		;#0
+	dw		vga_cursor_disable				;#1
+	dw		vga_cursor_enable				;#2
+	dw		_interrupt_vga_cursor_move		;#3
+	dw		vga_set_video_mode				;#4
+	dw		_interrupt_tty_putchar_ascii	;#5
+	dw		_interrupt_tty_print_ascii		;#6
+	dw		_interrupt_tty_next_row			;#7
+	dw		fat12_read_root					;#8
+	dw		fat12_find_entry				;#9
+	dw		fat12_load_entry				;#10
+	dw		fat12_file_size					;#11
+	dw		fat12_file_entry_size			;#12
+	dw		_interrupt_pit_set_frequency	;#13
+	dw		_interrupt_pit_get_frequency	;#14
+	dw		_interrupt_get_keyboard_input	;#15
+	dw		_interrupt_scancode_to_ascii	;#16
+	dw		_interrupt_int_to_ascii			;#17
+	dw		_interrupt_uint_to_ascii		;#18
+	dw		_interrupt_set_pit_int			;#19
+	dw		_interrupt_set_keyboard_int		;#20
+	dw		_interrupt_rand_int				;#21
+	dw		_interrupt_set_rand_seed		;#22
+	dw		rtc_get_sec						;#23
+	dw		rtc_get_min						;#24
+	dw		rtc_get_hour					;#25
+	dw		rtc_get_day						;#26
+	dw		rtc_get_month					;#27
+	dw		rtc_get_year					;#28
+	dw		rtc_get_century					;#29
+	dw		rtc_get_week					;#30
+	dw		rtc_get_ascii_sec				;#31
+	dw		rtc_get_ascii_min				;#32
+	dw		rtc_get_ascii_hour				;#33
+	dw		rtc_get_ascii_day				;#34
+	dw		rtc_get_ascii_month				;#35
+	dw		rtc_get_ascii_year				;#36
+	dw		rtc_get_ascii_century			;#37
+	dw		rtc_get_ascii_week				;#38
 
 _interrupt_vga_clear_screen:
+;in: 
+;out: ah = byte[vga_color]
+;	  al = 0
+;     di = 0
+;     cx = 0
+;	  bx = 0
+;	  dx = 0x03D5
 	push	ds
 	mov		bx,		KERNEL_OFFSET
 	mov		ds,		bx
@@ -164,7 +169,9 @@ _interrupt_vga_clear_screen:
 	retn
 
 _interrupt_pit_set_frequency:
-;in: ax = frequency
+;in:  ax = frequency
+;out: al = ah
+;	  bx = KERNEL_OFFSET
 	push	ds
 	mov		bx,		KERNEL_OFFSET
 	mov		ds,		bx
@@ -173,6 +180,9 @@ _interrupt_pit_set_frequency:
 	retn
 
 _interrupt_pit_get_frequency:
+;in:
+;out: ax = word[pit_frequency]
+;	  bx = KERNEL_OFFSET
 	push	ds
 	mov		bx,		KERNEL_OFFSET
 	mov		ds,		bx
@@ -182,7 +192,7 @@ _interrupt_pit_get_frequency:
 
 _interrupt_vga_cursor_move:
 ;in:  cx = cursor position
-;out: bx = word[vga_pos_cursor]
+;out: bx = word[vga_pos_cursor] / 2
 ;     dx = 0x03D5
 ;     al = bh
 	push	ds
@@ -195,8 +205,18 @@ _interrupt_vga_cursor_move:
 
 _interrupt_tty_putchar_ascii:
 ;in:  al = ASCII
-;out: ax = vga_char (al = ASCII, ah = color)
-;     bx = word[vga_pos_cursor]
+;out: if al == 0, then:
+;		 al = 0
+;	  if al == 0x0A, then:
+;		 al = bh
+;		 bx = word[vga_pos_cursor] / 2
+;		 cx = (num_of_row + 1) * 80
+;		 dx = 0x03D5
+;	  else:
+;		 ah = byte[vga_color]
+;		 al = bh
+;		 bx = word[vga_pos_cursor] / 2
+;		 dx = 0x03D5
 	test	al,		al
 	je		.end
 	push	ds
@@ -204,39 +224,53 @@ _interrupt_tty_putchar_ascii:
 	je		.new_line
 	mov		bx,		KERNEL_OFFSET
 	mov		ds,		bx
-	mov		ah,		byte[vga_color]
+	mov		ah,		byte[vga_color] ;ax vga_char now
 	mov		bx,		word[vga_pos_cursor]
 	mov		word[es:bx],	ax
-	add		word[vga_pos_cursor], VGA_CHAR_SIZE
-	call	vga_cursor_move
+	add		bx,		VGA_CHAR_SIZE
+	mov		word[vga_pos_cursor], bx
+	call	vga_cursor_move.without_get_pos_cursor_with_div
 	pop		ds
 .end:
 	retn
 .new_line:
-	pusha
 	call	_interrupt_tty_next_row
-	popa
 	pop		ds
 	retn
 
 _interrupt_tty_print_ascii:
 ;in:  si = ptr to str
-;     cx = len of str
-;out: si = end of str
-;     cx = 0
-;     ax = vga_char of last symbol in si (al = ASCII, ah = color)
-;     bx = word[vga_pos_cursor]
+;	  cx = len of str
+;out: if last_char == 0, then:
+;		 al = 0
+;		 si = end of str
+;		 cx = 0
+;	  if last_char == 0x0A, then:
+;		 al = bh
+;		 bx = word[vga_pos_cursor] / 2
+;		 cx = (num_of_row + 1) * 80
+;		 dx = 0x03D5
+;		 si = end of str
+;	  else:
+;		 ah = byte[vga_color]
+;		 al = bh
+;		 bx = word[vga_pos_cursor] / 2
+;		 dx = 0x03D5
+;		 si = end of str
+;		 cx = 0
 .lp:
 	lodsb	;al <- ds:si
+	push	cx
 	call	_interrupt_tty_putchar_ascii
+	pop		cx
 	loop	.lp
 	retn
 
 _interrupt_tty_next_row:
 ;in:
 ;out: al = bh
-;     bx = word[vga_pos_cursor]
-;     cx = (num_of_row + 1) * 32
+;     bx = word[vga_pos_cursor] / 2
+;     cx = (num_of_row + 1) * 80
 ;     dx = 0x03D5
 ;need calc the row now, inc and mul to 80 * VGA_CHAR_SIZE
 	push	ds
@@ -246,27 +280,10 @@ _interrupt_tty_next_row:
 	pop		ds
 	retn
 
-_interrupt_wait_keyboard_input:
-	push	ds
-	mov		ax,		KERNEL_OFFSET
-	mov		ds,		ax
-
-	jmp		.wait_in
-.wait:
-	hlt
-.wait_in:
-	mov		al,		byte[kb_buf_pos]
-	test	al,		al
-	je      .wait
-
-	call	pop_kb_buf
-	pop		ds
-	retn
-	
 KB_EMPTY equ 0x00	;this scancode don't used in XT set
 _interrupt_get_keyboard_input:
-;in:  al = scancode
-;out: al = KB_EMPTY if error, else scancode
+;in:
+;out: al = 0 if buffer empty, else scancode
 	push	ds
 	mov		bx,		KERNEL_OFFSET
 	mov		ds,		bx
@@ -275,6 +292,9 @@ _interrupt_get_keyboard_input:
 	retn
 
 _interrupt_scancode_to_ascii:
+;in:  al = scancode
+;out: al = 0 if char not printable, else ascii
+;	  bx = al
 	push	ds
 	mov		bx,		KERNEL_OFFSET
 	mov		ds,		bx
@@ -283,6 +303,13 @@ _interrupt_scancode_to_ascii:
 	retn
 
 _interrupt_int_to_ascii:
+;in:  ax = int
+;	  si = ptr on str
+;out: si = ascii str from number
+;	  cx = len of si
+;	  di = num_to_ascii_buffer
+;	  al = high char in str
+;	  dx = high sign in int
 	push	ds
 	mov		bx,		KERNEL_OFFSET
 	mov		ds,		bx
@@ -291,43 +318,45 @@ _interrupt_int_to_ascii:
 	retn
 
 _interrupt_uint_to_ascii:
+;in:  ax = uint
+;	  si = ptr on str
+;out: si = ascii str from number
+;	  cx = len of str
+;	  di = num_to_ascii_buffer
+;	  al = high char in str
+;	  dx = high sign in uint
 	push	gs
 	mov		bx,		KERNEL_OFFSET
 	mov		gs,		bx
 
-	push	si
 	mov		di,		num_to_ascii_buf
+	mov		cx,		10		;divisor
+	mov		bl,		0x30	;need add for transform to ascii
 .lp:
-	xor		dx,		dx
-	div		word[gs:divinder_int_to_ascii]
+	xor		dx,		dx	;clear, because used in div instruction (dx:ax)
+	div		cx			;ax = quotient, dx = remainder
+	add		dl,		bl	;transform to ascii
+	mov		byte[di],	dl
+	inc		di
 	test	ax,		ax
-	je		.end
-	mov		bx,		ax
-	add		dl,		0x30
-	mov		byte[gs:di],	dl
-	mov		ax,		bx
-	inc		di
-	jmp		.lp
-.end:
-	add		dl,		0x30
-	mov		byte[gs:di],	dl
-	inc		di
-	mov		cx,		di
-	sub		cx,		num_to_ascii_buf
-.lp2:
+	jne		.lp
+.end_lp:
+	lea		cx,		[di - num_to_ascii_buf] ;calc len of str
+.lp2:	;invert copy from di to si
 	dec		di
-	mov		al,		byte[gs:di]
-	mov		byte[ds:si],	al
+	mov		al,		byte[di]
+	mov		byte[si],	al
 	inc		si
 	cmp		di,		num_to_ascii_buf
 	jne		.lp2
-	pop		si
+	sub		si,		cx	;si = start of str
 
 	pop		gs
 	retn
 
 _interrupt_set_pit_int:
-;in: di=pit_handler
+;in:  di = pit_handler
+;out: ax = 0
 	cli
 	xor		ax,		ax
 	mov		gs,		ax
@@ -337,6 +366,8 @@ _interrupt_set_pit_int:
 	retn
 
 _interrupt_set_keyboard_int:
+;in:  di = keyboard_handler
+;out: ax = 0
 	cli
 	xor		ax,		ax
 	mov		gs,		ax
@@ -346,6 +377,10 @@ _interrupt_set_keyboard_int:
 	retn
 
 _interrupt_rand_int:
+;in:
+;out: ax = pseudo random number
+;	  dx = ???
+;	  bx = KERNEL_OFFSET
 	push	ds
 	mov		bx,		KERNEL_OFFSET
 	mov		ds,		bx
@@ -354,6 +389,9 @@ _interrupt_rand_int:
 	retn
 
 _interrupt_set_rand_seed:
+;in:  ax = seed
+;out: ax = seed
+;	  bx = KERNEL_OFFSET
 	push	ds
 	mov		bx,		KERNEL_OFFSET
 	mov		ds,		bx

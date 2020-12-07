@@ -52,6 +52,7 @@ keyboard_init:
 	retn
 
 keyboard_int:
+;push scancode to kb_buf, set led, caps...
 	push	ds
 	push	ax
 	mov		ax,		KERNEL_OFFSET
@@ -76,6 +77,8 @@ keyboard_int:
 
 	cmp		al,		0xE0	;spec scancode
 	je		kb_spec_scancode
+	cmp		al,		0xE1
+	je		kb_pause
 
 	call	keyboard_set_led
 	call	check_shift_pressed
@@ -86,61 +89,131 @@ keyboard_int:
 	out		PIC_EOI, al
 	iret
 
-kb_spec_scancode:
-	call	keyboard_wait_port
+kb_pause:
 	in		al,		KB_DATA_PORT
-	;pg up make = e0, 49
-	;pg dn make = e0, 51
-	cmp		al,		0x49
-	jne		.not_pg_up_make
-	mov		al,		SCANCODE_OS_MAKE_PG_UP
+	in		al,		KB_DATA_PORT
+	in		al,		KB_DATA_PORT
+	in		al,		KB_DATA_PORT
+
+	mov		al,		SCANCODE_OS_MAKE_PAUSE
 	call	push_kb_buf
-	jmp		.end
-.not_pg_up_make:
-	cmp		al,		0x51
-	jne		.not_page_down_make
-	mov		al,		SCANCODE_OS_MAKE_PG_DOWN
-	call	push_kb_buf
-	jmp		.end
-.not_page_down_make:
-	cmp		al,		0x48
-	jne		.not_make_up_arrow
-	mov		al,		SCANCODE_OS_MAKE_UP_ARROW 
-	call	push_kb_buf
-	jmp		.end
-.not_make_up_arrow:
-	cmp		al,		0x4B
-	jne		.not_make_left_arrow
-	mov		al,		SCANCODE_OS_MAKE_LEFT_ARROW
-	call	push_kb_buf
-	jmp		.end
-.not_make_left_arrow:
-	cmp		al,		0x50
-	jne		.not_make_down_arrow
-	mov		al,		SCANCODE_OS_MAKE_DOWN_ARROW
-	call	push_kb_buf
-	jmp		.end
-.not_make_down_arrow:
-	cmp		al,		0x4D
-	jne		.not_make_right_arrow
-	mov		al,		SCANCODE_OS_MAKE_RIGHT_ARROW  
-	call	push_kb_buf
-.not_make_right_arrow:
-.end:
+	
 	pop		ds
 	mov		al,		PICM
 	out		PIC_EOI, al
 	iret
 
+kb_make_print:
+	in		al,		KB_DATA_PORT
+	in		al,		KB_DATA_PORT
+
+	mov		al,		SCANCODE_OS_MAKE_PRINT
+	call	push_kb_buf
+	
+	pop		ds
+	mov		al,		PICM
+	out		PIC_EOI, al
+	iret
+
+kb_break_print:
+	in		al,		KB_DATA_PORT
+	in		al,		KB_DATA_PORT
+
+	mov		al,		SCANCODE_OS_BREAK_PRINT
+	call	push_kb_buf
+	
+	pop		ds
+	mov		al,		PICM
+	out		PIC_EOI, al
+	iret
+
+kb_spec_scancode:
+	call	keyboard_wait_port
+	in		al,		KB_DATA_PORT
+
+	cmp		al,		0x2A
+	je		kb_make_print
+	cmp		al,		0xB7
+	je		kb_break_print
+
+	movzx	bx,		al
+	mov		al,		byte[.data_table + bx]
+	call	push_kb_buf
+
+	pop		ds
+	mov		al,		PICM
+	out		PIC_EOI, al
+	iret
+.data_table:
+		times 29 db 0
+		db		SCANCODE_OS_MAKE_KP_EN			;0x1C
+		db		SCANCODE_OS_MAKE_R_CTRL			;0x1D
+		times 23 db 0
+		db		SCANCODE_OS_MAKE_KP_DIV			;0x35
+		times 2 db 0
+		db		SCANCODE_OS_MAKE_R_ALT			;0x38
+		times 13 db 0
+		db		SCANCODE_OS_MAKE_HOME			;0x47
+		db		SCANCODE_OS_MAKE_UP_ARROW		;0x48
+		db		SCANCODE_OS_MAKE_PG_UP			;0x49
+		times 1 db 0
+		db		SCANCODE_OS_MAKE_LEFT_ARROW		;0x4B
+		times 1 db 0
+		db		SCANCODE_OS_MAKE_RIGHT_ARROW	;0x4D
+		times 1 db 0
+		db		SCANCODE_OS_MAKE_END			;0x4F
+		db		SCANCODE_OS_MAKE_DOWN_ARROW		;0x50
+		db		SCANCODE_OS_MAKE_PG_DOWN		;0x51
+		db		SCANCODE_OS_MAKE_INSERT			;0x52
+		db		SCANCODE_OS_MAKE_DELETE			;0x53
+		times 7 db 0
+		db		SCANCODE_OS_MAKE_L_GUI			;0x5B
+		db		SCANCODE_OS_MAKE_R_GUI			;0x5C
+		times 1 db 0
+		db		SCANCODE_OS_MAKE_POWER			;0x5E
+		db		SCANCODE_OS_MAKE_SLEEP			;0x5F
+		times 3 db 0
+		db		SCANCODE_OS_MAKE_WAKE			;0x63
+		times 51 db 0
+		db		SCANCODE_OS_BREAK_HOME			;0x97
+		times 4 db 0
+		db		SCANCODE_OS_BREAK_KP_EN			;0x9C
+		db		SCANCODE_OS_BREAK_R_CTRL		;0x9D
+		times 23 db 0
+		db		SCANCODE_OS_BREAK_KP_DIV		;0xB5
+		times 3 db 0
+		db		SCANCODE_OS_BREAK_R_ALT			;0xB9
+		times 14 db 0
+		db		SCANCODE_OS_BREAK_UP_ARROW		;0xC8
+		db		SCANCODE_OS_BREAK_PG_UP			;0xC9
+		times 1 db 0
+		db		SCANCODE_OS_BREAK_LEFT_ARROW	;0xCB
+		times 1 db 0
+		db		SCANCODE_OS_BREAK_RIGHT_ARROW	;0xCD
+		times 1 db 0
+		db		SCANCODE_OS_BREAK_END			;0xCF
+		db		SCANCODE_OS_BREAK_DOWN_ARROW	;0xD0
+		db		SCANCODE_OS_BREAK_PG_DOWN		;0xD1
+		db		SCANCODE_OS_BREAK_INSERT		;0xD2
+		db		SCANCODE_OS_BREAK_DELETE		;0xD3
+		times 7 db 0
+		db		SCANCODE_OS_BREAK_L_GUI			;0xDB
+		db		SCANCODE_OS_BREAK_R_GUI			;0xDC
+		times 1 db 0
+		db		SCANCODE_OS_BREAK_POWER			;0xDE
+		db		SCANCODE_OS_BREAK_SLEEP			;0xDF
+		times 3 db 0
+		db		SCANCODE_OS_BREAK_WAKE			;0xE3
+
 KB_OVERFLOW equ 0x00	;this scancode don't used in XT set
 push_kb_buf:
 ;in:  al = scancode
 ;out: al = KB_OVERFLOW if error, else scancode
+;	  bx = byte[kb_buf_pos - 1]
 	movzx	bx,		byte[kb_buf_pos]
 	cmp		bx,		KB_BUF_SIZE
 	je		.end_overflow
-	add		bx,		kb_buf
-	mov		byte[bx],	al
+	mov		byte[bx + kb_buf],	al
 	inc		byte[kb_buf_pos]
 	retn
 .end_overflow:
@@ -152,13 +225,13 @@ KB_EMPTY equ 0x00	;this scancode don't used in XT set
 pop_kb_buf:
 ;in:  al = scancode
 ;out: al = KB_EMPTY if error, else scancode
+;	  bx = byte[kb_buf_pos]
 	movzx	bx,		byte[kb_buf_pos]
 	test	bx,		bx
 	je		.end_empty
 	dec		bl
 	mov		byte[kb_buf_pos],	bl
-	add		bx,		kb_buf
-	mov		al,		byte[bx]
+	mov		al,		byte[bx + kb_buf]
 	retn
 .end_empty:
 ;	mov		al,		KB_EMPTY

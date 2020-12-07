@@ -1,7 +1,11 @@
 int_to_ascii:
-;in: ax=int 
-;	 si=ptr on str
-;out:si=ascii str from number
+;in:  ax = int 
+;	  si = ptr on str
+;out: si = ascii str from number
+;	  cx = len of str
+;	  di = num_to_ascii_buffer
+;	  al = high char in str
+;	  dx = high sign in int
 	cmp		ax,		0
 	jnl		.not_neg_num
 	neg		ax
@@ -13,33 +17,35 @@ int_to_ascii:
 	inc		cx
 	retn
 
-divinder_int_to_ascii dw 10
 uint_to_ascii:
-;in: ax=uint 
-;	 si=ptr on str
-;out:si=ascii str from number
-;	 cx=len of si
+;in:  ax = uint 
+;	  si = ptr on str
+;out: si = ascii str from number
+;	  cx = len of str
+;	  di = num_to_ascii_buffer
+;	  al = high char in str
+;	  dx = high sign in uint
 	mov		di,		num_to_ascii_buf
-	mov		cx,		word[divinder_int_to_ascii]
-	mov		bl,		0x30
+	mov		cx,		10		;divisor
+	mov		bl,		0x30	;need add for transform to ascii
 .lp:
-	xor		dx,		dx
-	div		cx
-	add		dl,		bl
+	xor		dx,		dx	;clear, because used in div instruction (dx:ax)
+	div		cx			;ax = quotient, dx = remainder
+	add		dl,		bl	;transform to ascii
 	mov		byte[di],	dl
 	inc		di
 	test	ax,		ax
 	jne		.lp
 .end_lp:
-	lea		cx,		[di - num_to_ascii_buf]
-.lp2:
+	lea		cx,		[di - num_to_ascii_buf] ;calc len of str
+.lp2:	;invert copy from di to si
 	dec		di
 	mov		al,		byte[di]
 	mov		byte[si],	al
 	inc		si
 	cmp		di,		num_to_ascii_buf
 	jne		.lp2
-	sub		si,		cx
+	sub		si,		cx	;si = start of str
 	retn
 num_to_ascii_buf times 6 db " "
 
@@ -47,13 +53,12 @@ str_to_fat12_filename:
 ;in:  si = str (in format name.ext or name (in this case will add BIN as ext))
 ;	  cx = len
 ;	if have not ext then add ext as BIN
-;out: si = FAT12 name
-;if cx > 8, then cx = 8
-	mov		di,		FAT12_STRLEN
-	call	str_to_caps
+;out: si = FAT12_STR
+;	  cx = str len + FAT12_STR
+;	  di = FAT12_STR + FAT12_STRLEN
 	push	ds
+;if cx > 8, then cx = 8
 	cmp		cx,		FAT12_STRLEN_WITHOUT_EXT
-	setae	bl
 	jle		.check_strlen
 	mov		cx,		FAT12_STRLEN_WITHOUT_EXT
 .check_strlen:
@@ -64,15 +69,16 @@ str_to_fat12_filename:
 	lodsb	;ds:si -> al
 	cmp		al,		'.'
 	je		.if_ext
+	cmp		al,		' '
+	je		.end_cp
 	stosb	;es:di <- al
 	cmp		di,		cx
 	jne		.cp
+.end_cp:
 
 	mov		ax,		KERNEL_OFFSET
 	mov		ds,		ax
 	mov		si,		FAT12_STR_ONLY_BIN
-	cmp		bl,		1
-	je		.cp_ext
 .if_ext:
 	mov		al,		' '
 .fill_space:
@@ -84,6 +90,11 @@ str_to_fat12_filename:
 	movsb
 	cmp		di,		FAT12_STR + FAT12_STRLEN
 	jne		.cp_ext
+	mov		si,		KERNEL_OFFSET
+	mov		ds,		si
+	mov		si,		FAT12_STR
+	mov		di,		FAT12_STRLEN
+	call	str_to_caps
 	pop		ds
 	retn
 
@@ -97,6 +108,8 @@ str_to_caps:
 ;in:  si = str
 ;	  di = len
 ;out: si = caps str
+;	  di = si
+;	  al = first char si
 	add		di,		si
 .lp:
 	mov		al,		byte[ds:di]
@@ -131,7 +144,8 @@ caps_to_char:
 
 scancode_to_ascii:
 ;in:  al = scancode
-;out: al = ascii
+;out: al = 0 if char not printable, else ascii
+;	  bx = al
 	mov		bl,		byte[kb_shift_pressed]
 	test	bl,		bl
 	je		.if_shift_not_pressed
