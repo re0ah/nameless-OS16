@@ -1,3 +1,28 @@
+;This is free and unencumbered software released into the public domain.
+
+;Anyone is free to copy, modify, publish, use, compile, sell, or
+;distribute this software, either in source code form or as a compiled
+;binary, for any purpose, commercial or non-commercial, and by any
+;means.
+
+;In jurisdictions that recognize copyright laws, the author or authors
+;of this software dedicate any and all copyright interest in the
+;software to the public domain. We make this dedication for the benefit
+;of the public at large and to the detriment of our heirs and
+;successors. We intend this dedication to be an overt act of
+;relinquishment in perpetuity of all present and future rights to this
+;software under copyright law.
+
+;THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+;IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+;OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+;ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+;OTHER DEALINGS IN THE SOFTWARE.
+
+;For more information, please refer to <http://unlicense.org/>
+
 ;very thanks https://web.stanford.edu/class/cs140/projects/pintos/specs/freevga/vga/vga.htm
 VGA_BUFFER		equ 0xB800
 VGA_BUF_SIZE	equ 32768 ;bytes
@@ -77,7 +102,7 @@ LOW_BYTE_NOW	equ	0x0F	;next byte in CURSOR_OFFSET will be low
 ;In my spirit, but perhaps not
 
 vga_pos_cursor  dw 0
-vga_color		db 0
+vga_color		db 0x07 ;bg: black, fg: gray
 vga_memory_size dw 0
 
 vga_init:
@@ -100,6 +125,7 @@ vga_clear_screen:
 ;	  dx = 0x03D5
 	mov		ah,		byte[vga_color]
 	mov		al,		' '
+;fill with ax first page of VGA_BUFFER
 	xor		di,		di
 	mov		cx,		VGA_PAGE_NUM_CHARS
 	rep		stosw	;ax -> es:di

@@ -1,5 +1,10 @@
-;Based on a free boot loader by E Dehling (also thanks mikeOS)
-BITS 16
+;==================================================================
+;The Mike Operating System bootloader
+;Copyright (C) 2006 - 2014 MikeOS Developers -- see doc/LICENSE.TXT
+;
+;Based on a free boot loader by E Dehling.
+
+bits 16
 
 jmp short start
 OEMLabel db "re0ah____"
@@ -77,7 +82,9 @@ FileSystem			db "FAT12   "
 ;------------------End of disk description table-------------------------------
 ;------------------------------------------------------------------------------
 KERNEL_FILENAME	db "KERNEL  BIN"
-KERNEL_OFFSET	equ 0x1400
+KERNEL_SEGMENT	equ 0x50 ;IVT_SIZE + BIOS_DATA = 0x500 bytes, with considering
+						 ;4 bits shift right segment for make address kernel
+						 ;will be placed behind bios data
 
 DISK_ERROR		db "Floppy error", 0
 FILE_NOT_FOUND	db "KERNEL.BIN not found", 0
@@ -144,9 +151,8 @@ next_root_entry:
 	jmp		reboot
 
 found_file_to_load:			;fetch cluster and load FAT into RAM
-	mov		ax,		word[es:di+0x0F]	;offset FAT12_FULLNAME_SIZE +0x0F=26,
+	mov		bp,		word[es:di+0x0F]	;offset FAT12_FULLNAME_SIZE +0x0F=26,
 																;1st cluster
-	mov		word[cluster],	ax
 read_fat:
 	mov		ax,		1	;1st sector of 1st FAT
 	call	l2hts
@@ -174,20 +180,19 @@ fatal_disk_error:
 	jmp		reboot				;fatal double error
 
 read_fat_ok:
-	mov		ax,		KERNEL_OFFSET
+	mov		ax,		KERNEL_SEGMENT
 	mov		es,		ax
-
+	xor		di,		di		;ptr where to load data
 ;FAT cluster 0 = media descriptor = 0F0h
 ;FAT cluster 1 = filler cluster = 0FFh
 ;Cluster start = ((cluster number) - 2) * SectorsPerCluster + (start of user)
 ;              = (cluster number) + 31
 ;load FAT from disk
 load_file_sector:
-	mov		ax,		word[cluster]
-	add		ax,		31
+	lea		ax,		[bp + 31]
 	call	l2hts
 
-	mov		bx,		word[pointer]
+	mov		bx,		di
 
 	mov		ax,		0x0201
 
@@ -202,35 +207,29 @@ load_file_sector:
 	;FAT12 cluster value stored in 12 bits, so do bit mask 0x0FFF
 calculate_next_cluster:
 ;FAT12 element 12 bit long. Need mul to 1.5
-	mov		si,		word[cluster]
-	mov		cx,		si
-	and		cx,		1		;odd or even
+	mov		si,		bp
 	mov		bx,		si
 	shr		bx,		1
-	add		si,		bx
-	add		si,		DISK_BUFFER
-	mov		ax,		word[ds:si]
+	mov		bp,		word[ds:si + bx + DISK_BUFFER]
 
-	jcxz	even
-
+	test	si,		1
+	jz		even
 odd:
-	shr		ax,		4		;shift first 4 bits (they belong to another entry)
+	shr		bp,		4		;shift first 4 bits (they belong to another entry)
 even:
-	and		ax,		0x0FFF
+	and		bp,		0x0FFF
 
 next_cluster_cont:
-	mov		word[cluster],	ax	;store cluster
-
-	cmp		ax,		0x0FF8		;0xFF8 = end of file marker in FAT12
+	cmp		bp,		0x0FF8		;0xFF8 = end of file marker in FAT12
 	jae		to_kernel
 
-	add		word[pointer],	BYTES_PER_SECTOR
+	add		di,		BYTES_PER_SECTOR
 	jmp		load_file_sector
 
 to_kernel:
 	xor		dl,		dl	;provide to kernel the drive number
 
-	jmp		KERNEL_OFFSET:0x0000
+	jmp		KERNEL_SEGMENT:0x0000
 
 ; ------------------------------------------------------------------
 ; BOOTLOADER SUBROUTINES
@@ -300,12 +299,6 @@ l2hts:
 	xor		dl,		dl
 
 	ret
-
-
-;------------------------------------------------------------------------------
-	cluster		dw 0 	;cluster of the file we want to load
-	pointer		dw 0 	;pointer into Buffer, for loading kernel
-
 
 	times 510-($-$$) db 0	;pad remainder of boot sector with zeros
 	dw	0xAA55				;boot signature

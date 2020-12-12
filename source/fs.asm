@@ -1,3 +1,28 @@
+;This is free and unencumbered software released into the public domain.
+
+;Anyone is free to copy, modify, publish, use, compile, sell, or
+;distribute this software, either in source code form or as a compiled
+;binary, for any purpose, commercial or non-commercial, and by any
+;means.
+
+;In jurisdictions that recognize copyright laws, the author or authors
+;of this software dedicate any and all copyright interest in the
+;software to the public domain. We make this dedication for the benefit
+;of the public at large and to the detriment of our heirs and
+;successors. We intend this dedication to be an overt act of
+;relinquishment in perpetuity of all present and future rights to this
+;software under copyright law.
+
+;THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+;IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+;OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+;ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+;OTHER DEALINGS IN THE SOFTWARE.
+
+;For more information, please refer to <http://unlicense.org/>
+
 ;https://www.eit.lth.se/fileadmin/eit/courses/eitn50/Literature/fat12_description.pdf
 ;http://read.pudn.com/downloads77/ebook/294884/FAT32%20Spec%20%28SDA%20Contribution%29.pdf
 
@@ -73,11 +98,16 @@ START_OF_ROOT equ SECTORS_RESERVED_FOR_BOOT + \
 START_USER_DATA equ START_OF_ROOT + SECTORS_TO_ROOT_DIR ;33
 ;==============================================================================
 
-;read root in DISK_BUFFER
 fat12_read_root:
+;read fat12 root in DISK_BUFFER
 ;in:
-;out:
+;out: ah = return code BIOS int
+;	  al = actual sectors read count
+;	  bx = ???
+;	  dx = ???
+;	  ??? I don't know what's registers change read BIOS call
 	push	es
+;logic sector to physical
 	mov		ax,		START_OF_ROOT
 	call	l2hts
 
@@ -93,7 +123,6 @@ fat12_read_root:
 	mov		es,		bx
 	xor		bx,		bx
 									;Results CF Set On Error, Clear If No Error
-	stc				;a few BIOSes do not set properly on error
 	int		0x13
 	pop		es
 	retn
@@ -125,16 +154,21 @@ fat12_file_entry_size:
 fat12_find_entry:
 ;in:  ds:si - name of file
 ;out: if found:  ax = ptr on fat12 entry
+;				 di = ax + FAT12_FULLNAME_SIZE
+;				 bx = si
+;				 si = bx + FAT12_FULLNAME_SIZE
 ;	  not found: ax = FAT12_ENTRY_NOT_FOUND
+;				 di = ROOT_DIR_SIZE
+;				 bx = si
+;				 si = bx + FAT12_FULLNAME_SIZE
 	push	es
-	push	si
 	call	fat12_read_root
-	pop		bx
 	mov		ax,		DISK_BUFFER
 	mov		es,		ax
-	
-	xor		ax,		ax
-	xor		di,		di
+;on disk buffer root now, check all root before entry doesn't found
+	mov		bx,		si 
+	xor		ax,		ax ;entry counter
+	xor		di,		di ;entry pointer for comparison
 .next_entry:
 	mov		si,		bx
 	mov		cx,		FAT12_FULLNAME_SIZE 
@@ -152,6 +186,12 @@ fat12_find_entry:
 	retn
 
 read_fat:
+;in:  ds:si - name of file
+;out: ah = return code BIOS int
+;	  al = actual sectors read count
+;	  bx = ???
+;	  dx = ???
+;	  ??? I don't know what's registers change read BIOS call
 	push	es
 	mov		ax,		DISK_BUFFER
 	mov		es,		ax
@@ -162,31 +202,35 @@ read_fat:
 ;	mov		ah,		0x02	;AH: BIOS function read sectors from drive
 ;	mov		al,		0x09	;AL: Sectors To Read Count
 	mov		ax,		0x0209
-	;CH		Cylinder
-	;CL		Sector
-	;DH		Head
-	;DL		Drive
+							;CH		Cylinder
+							;CL		Sector
+							;DH		Head
+							;DL		Drive
 	xor		bx,		bx
 	;Results CF Set On Error, Clear If No Error
-	stc
+;	stc
 	int		0x13
 
 	pop		es
 	retn
 
-STRTR db "           "
-
 fat12_load_entry:
 ;in:  DISK_BUFFER:ax = ptr on fat12 entry
 ;	  es:si = LOAD PTR
-;out: 
-	mov		word[ds:pointer],	si
-	mov		bx,		ax
+;out: ax = bp + 31
+;	  bx = si / 2
+;	  cx = ?
+;	  dx = dl = 0, dh = ?
+;	  si = pos fat12 element
+;	  di = where to load data
+;	  bp = file marker of fat element
+	mov		di,		si ;store ptr where to load data
+	mov		bx,		ax ;fat12 entry ptr
 	mov		ax,		DISK_BUFFER
 	mov		gs,		ax
-	mov		ax,		word[gs:bx+26]	;1st cluster (26st byte from
-												 ;start of entry)
-	mov		word[ds:cluster],	ax
+	mov		bp,		word[gs:bx + 26] ;1st cluster (26st byte from
+										;start of entry)
+									 ;store cluster number
 	pusha
 	call	read_fat
 	popa
@@ -196,10 +240,9 @@ fat12_load_entry:
 ;              = (cluster number) + 31
 ;load FAT from disk
 .load_file_sector:
-	mov		ax,		word[ds:cluster]
-	add		ax,		31
+	lea		ax,		[bp + 31]
 	call	l2hts
-	mov		bx,		word[ds:pointer]
+	mov		bx,		di
 	mov		ax,		0x0201
 	stc
 	int		0x13
@@ -210,26 +253,22 @@ fat12_load_entry:
 	jmp		.load_file_sector
 .calculate_next_cluster:
 ;FAT12 element 12 bit long. Need mul to 1.5
-	mov		si,		word[ds:cluster]
-	mov		cx,		si
-	and		cx,		1		;odd or even
+	mov		si,		bp
 	mov		bx,		si
 	shr		bx,		1
-	add		si,		bx
-	mov		ax,		word[gs:si]
+	mov		bp,		word[gs:si + bx]
 
-	jcxz	.even
+	test	si,		1
+	jz		.even
 .odd:
-	shr		ax,		4		;shift first 4 bits (they belong to another entry)
+	shr		bp,		4		;shift first 4 bits (they belong to another entry)
 .even:
-	and		ax,		0x0FFF
+	and		bp,		0x0FFF
 .next_cluster_cont:
-	mov		word[ds:cluster],	ax	;store cluster
-
-	cmp		ax,		0x0FF8		;0xFF8..0xFFF = end of file marker in FAT12
+	cmp		bp,		0x0FF8		;0xFF8..0xFFF = end of file marker in FAT12
 	jae		.exit
 
-	add		word[ds:pointer],	BYTES_PER_SECTOR
+	add		di,		BYTES_PER_SECTOR
 	jmp		.load_file_sector
 .exit:
 	retn
@@ -277,6 +316,3 @@ l2hts:
 
 	pop		si
 	retn
-
-cluster			dw 0
-pointer			dw 0

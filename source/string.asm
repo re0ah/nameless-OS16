@@ -1,3 +1,28 @@
+;This is free and unencumbered software released into the public domain.
+
+;Anyone is free to copy, modify, publish, use, compile, sell, or
+;distribute this software, either in source code form or as a compiled
+;binary, for any purpose, commercial or non-commercial, and by any
+;means.
+
+;In jurisdictions that recognize copyright laws, the author or authors
+;of this software dedicate any and all copyright interest in the
+;software to the public domain. We make this dedication for the benefit
+;of the public at large and to the detriment of our heirs and
+;successors. We intend this dedication to be an overt act of
+;relinquishment in perpetuity of all present and future rights to this
+;software under copyright law.
+
+;THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+;IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+;OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+;ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+;OTHER DEALINGS IN THE SOFTWARE.
+
+;For more information, please refer to <http://unlicense.org/>
+
 int_to_ascii:
 ;in:  ax = int 
 ;	  si = ptr on str
@@ -8,6 +33,8 @@ int_to_ascii:
 ;	  dx = high sign in int
 	cmp		ax,		0
 	jnl		.not_neg_num
+;if int < 0, make them positive (neg on negative numbers
+;make positive numbers), write '-' in string buffer
 	neg		ax
 	mov		byte[si],	'-'
 	inc		si
@@ -75,8 +102,7 @@ str_to_fat12_filename:
 	cmp		di,		cx
 	jne		.cp
 .end_cp:
-
-	mov		ax,		KERNEL_OFFSET
+	mov		ax,		KERNEL_SEGMENT
 	mov		ds,		ax
 	mov		si,		FAT12_STR_ONLY_BIN
 .if_ext:
@@ -90,7 +116,7 @@ str_to_fat12_filename:
 	movsb
 	cmp		di,		FAT12_STR + FAT12_STRLEN
 	jne		.cp_ext
-	mov		si,		KERNEL_OFFSET
+	mov		si,		KERNEL_SEGMENT
 	mov		ds,		si
 	mov		si,		FAT12_STR
 	mov		di,		FAT12_STRLEN
@@ -102,7 +128,7 @@ FAT12_STR times 11 db ' '
 	FAT12_STRLEN equ $-FAT12_STR
 	FAT12_STRLEN_WITHOUT_EXT equ FAT12_STRLEN - 3
 	FAT12_EXT equ FAT12_STR + 8
-FAT12_STR_ONLY_BIN	db "BIN"
+FAT12_STR_ONLY_BIN	db "BIN" ;READ ONLY!
 
 str_to_caps:
 ;in:  si = str
@@ -110,7 +136,7 @@ str_to_caps:
 ;out: si = caps str
 ;	  di = si
 ;	  al = first char si
-	add		di,		si
+	add		di,		si ;make ptr to end of str
 .lp:
 	mov		al,		byte[ds:di]
 	call	char_to_caps

@@ -1,3 +1,28 @@
+;This is free and unencumbered software released into the public domain.
+
+;Anyone is free to copy, modify, publish, use, compile, sell, or
+;distribute this software, either in source code form or as a compiled
+;binary, for any purpose, commercial or non-commercial, and by any
+;means.
+
+;In jurisdictions that recognize copyright laws, the author or authors
+;of this software dedicate any and all copyright interest in the
+;software to the public domain. We make this dedication for the benefit
+;of the public at large and to the detriment of our heirs and
+;successors. We intend this dedication to be an overt act of
+;relinquishment in perpetuity of all present and future rights to this
+;software under copyright law.
+
+;THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+;IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+;OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+;ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+;OTHER DEALINGS IN THE SOFTWARE.
+
+;For more information, please refer to <http://unlicense.org/>
+
 RTC_SELECT_PORT	equ 0x70
 RTC_RW_PORT		equ 0x71
 
@@ -14,58 +39,41 @@ rtc_get_sec:
 ;out: al = seconds from CMOS
 ;	mov		al,		RTC_SECONDS
 	xor		al,		al
+rtc_get_info:
+;in: al = rtc register address
 	out		RTC_SELECT_PORT,	al
-
 	in		al,		RTC_RW_PORT
 	retn
 
 rtc_get_min:
 ;out: al = minutes from CMOS
 	mov		al,		RTC_MINUTE
-	out		RTC_SELECT_PORT,	al
-
-	in		al,		RTC_RW_PORT
-	retn
+	jmp		rtc_get_info
 
 rtc_get_hour:
 ;out: al = hour from CMOS
 	mov		al,		RTC_HOUR
-	out		RTC_SELECT_PORT,	al
-
-	in		al,		RTC_RW_PORT
-	retn
+	jmp		rtc_get_info
 
 rtc_get_week:
 ;out: al = week from CMOS
 	mov		al,		RTC_WEEK
-	out		RTC_SELECT_PORT,	al
-
-	in		al,		RTC_RW_PORT
-	retn
+	jmp		rtc_get_info
 
 rtc_get_day:
 ;out: al = day from CMOS
 	mov		al,		RTC_DAY
-	out		RTC_SELECT_PORT,	al
-
-	in		al,		RTC_RW_PORT
-	retn
+	jmp		rtc_get_info
 
 rtc_get_month:
 ;out: al = month from CMOS
 	mov		al,		RTC_MONTH
-	out		RTC_SELECT_PORT,	al
-
-	in		al,		RTC_RW_PORT
-	retn
+	jmp		rtc_get_info
 
 rtc_get_year:
 ;out: al = year from CMOS
 	mov		al,		RTC_YEAR
-	out		RTC_SELECT_PORT,	al
-
-	in		al,		RTC_RW_PORT
-	retn
+	jmp		rtc_get_info
 
 rtc_get_century:
 ;out: al = century from CMOS
@@ -83,9 +91,7 @@ rtc_get_century:
 	mov		al,		0x90
 	retn
 .if_have_field:
-	out		RTC_SELECT_PORT,	al
-	in		al,		RTC_RW_PORT
-	retn
+	jmp		rtc_get_info
 
 rtc_get_ascii_sec:
 ;in:  si = address where save time

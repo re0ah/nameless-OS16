@@ -1,16 +1,42 @@
+;This is free and unencumbered software released into the public domain.
+
+;Anyone is free to copy, modify, publish, use, compile, sell, or
+;distribute this software, either in source code form or as a compiled
+;binary, for any purpose, commercial or non-commercial, and by any
+;means.
+
+;In jurisdictions that recognize copyright laws, the author or authors
+;of this software dedicate any and all copyright interest in the
+;software to the public domain. We make this dedication for the benefit
+;of the public at large and to the detriment of our heirs and
+;successors. We intend this dedication to be an overt act of
+;relinquishment in perpetuity of all present and future rights to this
+;software under copyright law.
+
+;THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+;IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+;OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+;ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+;OTHER DEALINGS IN THE SOFTWARE.
+
+;For more information, please refer to <http://unlicense.org/>
+
 bits 16
 %include "kernel.inc"
 tty_start:
+;set vga buffer, segment es since he is pair with
+;di, and it allow easy write data to VRAM
 	mov		ax,		VGA_BUFFER
 	mov		es,		ax
-	mov		byte[vga_color], 0x07
+;	mov		byte[vga_color], 0x07 ;bg: black, fg: gray
 
 	call	vga_clear_screen
-	
+
 	mov		si,		HELLO_MSG
 	mov		cx,		HELLO_MSG_SIZE
 	call	tty_print_ascii
-
 	call	tty_print_path
 .input:
 	call	wait_keyboard_input
@@ -110,7 +136,9 @@ tty_next_row:
 	xor		ah,		ah
 
 	inc		ax
+;in ax num of row now counting from 1
 
+;mul to 80
 	shl		ax,		5
 	mov		cx,		ax
 	shl		ax,		2
@@ -123,6 +151,7 @@ tty_next_row:
 	call	vga_cursor_move.without_get_pos_cursor
 	retn
 
+argv_ptr dw 0
 get_tty_input_ascii:
 ;in:  di = addr where save ascii
 ;	  es = segment where save ascii
@@ -130,59 +159,62 @@ get_tty_input_ascii:
 ;	  cx = str len
 ;     bx = word[tty_input_start]
 ;	  al = 0
+;save ascii input from VRAM to es:di (args this function)
 	mov		si,		word[tty_input_start]
 .without_get_tty_input_start:
 	mov		cx,		word[vga_pos_cursor]
 .without_both:
 	mov		bx,		si
-	push	es
-	mov		ax,		STACK_OFFSET
-	mov		es,		ax
 	push	ds
 
-	xor		bp,		bp		;for args
+	mov		word[argv_ptr],	0
 	mov		ax,		VGA_BUFFER	
 	mov		ds,		ax
-.lp:
+.copy:
 	lodsw	;ax (vga char)   <- ds:si, si += 2
+	stosb	;al (ascii char) -> es:di, di += 1
 	cmp		al,		' '
 	jne		.not_space
-	test	bp,		bp
+	cmp		word[argv_ptr],	0
 	jne		.already_set
-	lea		bp,		[di + 1] ;set bp after space now
+	mov		word[argv_ptr], di
 .already_set:
 .not_space:
-	stosb	;al (ascii char) -> es:di, di += 1
 	cmp		si,		cx
-	jl		.lp
+	jl		.copy
+;argv_ptr ending with 0
 	xor		al,		al
 	stosb
 
 	pop		ds
-	pop		es
 	retn
 
 tty_push_enter:
-;it's very very very bad code kill me
 	mov		ax,		word[tty_input_start]
 	mov		cx,		word[vga_pos_cursor]
 	cmp		ax,		cx
 	je		.exit	;if has not input
-	mov		dx,		cx	;len of input
+;calc len of input
+	mov		dx,		cx
 	sub		dx,		ax
-	shr		dx,		1
+	shr		dx,		1	;need div on 2 because values above - positions on
+						;VGA memory with VGA_CHAR_SIZE 2 bytes.
 
 	sub		sp,		dx		;alloc dx bytes on stack
-	sub		sp,		6
+	sub		sp,		6		;also alloc 6 bytes for push segments further
 
 ;1. save user input on stack
 	mov		si,		ax	;word[tty_input_start]
 	mov		di,		sp
+	push	es
+	mov		ax,		STACK_SEGMENT
+	mov		es,		ax
 	call	get_tty_input_ascii.without_both
+	pop		es
 
 	mov		si,		sp
 	mov		cx,		dx
-	push	dx
+	push	dx	;save for restore after execve and clean stack
 	push	es
 	push	ds
 	mov		ax,		ds
@@ -193,9 +225,9 @@ tty_push_enter:
 	pop		ds
 	pop		es
 
-;	mov		si,		FAT12_STR
-;	mov		cx,		FAT12_STRLEN
-;	call	tty_print_ascii
+	mov		si,		FAT12_STR
+	mov		cx,		FAT12_STRLEN
+	call	tty_print_ascii
 
 	mov		si,		FAT12_STR
 	call	execve
@@ -210,6 +242,7 @@ tty_push_enter:
 	xor		al,		al
 	rep		stosb
 	pop		es
+;free stack
 	add		sp,		dx
 	add		sp,		6
 
@@ -228,15 +261,23 @@ tty_push_enter:
 	retn
 
 tty_push_backspace:
+;in:  
+;out: al = bh
+;	  bx = word[vga_pos_cursor] / 2
+;	  cx = (num_of_row + 1) * 80
+;	  dx = 0x03D5
+;if start of input equal current position cursor then don't moving cursor
 	mov		ax,		word[tty_input_start]
-	cmp		ax,		word[vga_pos_cursor]
+	mov		bx,		word[vga_pos_cursor]
+	cmp		ax,		bx
 	je		.exit
-	sub		word[vga_pos_cursor],	VGA_CHAR_SIZE
+;shifting pos cursor on 1 char and fill these position with space
+	sub		bx,		VGA_CHAR_SIZE
 	mov		al,		' '
 	mov		ah,		byte[vga_color]
-	mov		bx,		word[vga_pos_cursor]
 	mov		word[es:bx],	ax
-	call	vga_cursor_move
+	mov		word[vga_pos_cursor],	bx
+	call	vga_cursor_move.without_get_pos_cursor_with_div
 .exit:
 	retn
 
@@ -255,7 +296,7 @@ tty_print_path:
 	add		word[tty_input_start], cx
 	retn
 
-HELLO_MSG db "namelessOS16 v 4", 0x0A
+HELLO_MSG db "namelessOS16 v 5", 0x0A
 	HELLO_MSG_SIZE equ $-HELLO_MSG
 
 BAD_COMMAND_MSG db 0x0A, "command not found"

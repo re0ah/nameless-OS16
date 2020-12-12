@@ -1,6 +1,31 @@
-PICM				equ	0x20	;master PIC
-PICS				equ	0xA0	;slave PIC
-PIC_EOI				equ	0x20	;end of interrupt code
+;This is free and unencumbered software released into the public domain.
+
+;Anyone is free to copy, modify, publish, use, compile, sell, or
+;distribute this software, either in source code form or as a compiled
+;binary, for any purpose, commercial or non-commercial, and by any
+;means.
+
+;In jurisdictions that recognize copyright laws, the author or authors
+;of this software dedicate any and all copyright interest in the
+;software to the public domain. We make this dedication for the benefit
+;of the public at large and to the detriment of our heirs and
+;successors. We intend this dedication to be an overt act of
+;relinquishment in perpetuity of all present and future rights to this
+;software under copyright law.
+
+;THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+;IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+;OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+;ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+;OTHER DEALINGS IN THE SOFTWARE.
+
+;For more information, please refer to <http://unlicense.org/>
+
+PICM	equ	0x20	;master PIC
+PICS	equ	0xA0	;slave PIC
+PIC_EOI	equ	0x20	;end of interrupt code
 
 %include "pit.asm"
 %include "keyboard.asm"
@@ -15,14 +40,14 @@ ISR_ADDR_SYSCALL_FUNC	  equ 0x0080 ;int 0x20
 ISR_ADDR_SYSCALL_SEGMENT  equ 0x0082
 load_isr:
 ;in:
-;out: ax = KERNEL_OFFSET
+;out: ax = KERNEL_SEGMENT
 ;init devices and set isr function and segment, set syscall
 	cli
 	call	pit_init
 	call	keyboard_init
 	xor		ax,		ax	;ISR offset
 	mov		gs,		ax
-	mov		ax,		KERNEL_OFFSET
+	mov		ax,		KERNEL_SEGMENT
 	mov		word[gs:ISR_ADDR_PIT_FUNC],			pit_int
 	mov		word[gs:ISR_ADDR_PIT_SEGMENT],		ax
 	mov		word[gs:ISR_ADDR_KEYBOARD_FUNC],	keyboard_int
@@ -33,9 +58,9 @@ load_isr:
 	retn
 
 pit_interrupt_handler dw pit_int
-pit_interrupt_segment dw KERNEL_OFFSET
+pit_interrupt_segment dw KERNEL_SEGMENT
 keyboard_interrupt_handler dw keyboard_int
-keyboard_interrupt_segment dw KERNEL_OFFSET
+keyboard_interrupt_segment dw KERNEL_SEGMENT
 save_interrupts:
 ;save current PIT and keyboard interrupt ISR function & segment
 ;in variable's above
@@ -105,7 +130,7 @@ syscall:
 ;out: depending on syscall
 	push	gs
 	push	ax
-	mov		ax,		KERNEL_OFFSET
+	mov		ax,		KERNEL_SEGMENT
 	mov		gs,		ax	;throught gs segment get address from table
 	pop		ax
 	mov		bx,		word[gs:bx + .jump_table]
@@ -162,7 +187,7 @@ _interrupt_vga_clear_screen:
 ;	  bx = 0
 ;	  dx = 0x03D5
 	push	ds
-	mov		bx,		KERNEL_OFFSET
+	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
 	call	vga_clear_screen
 	pop		ds
@@ -171,9 +196,9 @@ _interrupt_vga_clear_screen:
 _interrupt_pit_set_frequency:
 ;in:  ax = frequency
 ;out: al = ah
-;	  bx = KERNEL_OFFSET
+;	  bx = KERNEL_SEGMENT
 	push	ds
-	mov		bx,		KERNEL_OFFSET
+	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
 	call	pit_set_frequency
 	pop		ds
@@ -182,9 +207,9 @@ _interrupt_pit_set_frequency:
 _interrupt_pit_get_frequency:
 ;in:
 ;out: ax = word[pit_frequency]
-;	  bx = KERNEL_OFFSET
+;	  bx = KERNEL_SEGMENT
 	push	ds
-	mov		bx,		KERNEL_OFFSET
+	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
 	mov		ax,		word[pit_frequency]
 	pop		ds
@@ -196,7 +221,7 @@ _interrupt_vga_cursor_move:
 ;     dx = 0x03D5
 ;     al = bh
 	push	ds
-	mov		ax,		KERNEL_OFFSET
+	mov		ax,		KERNEL_SEGMENT
 	mov		ds,		ax
 	mov		word[vga_pos_cursor],	cx
 	call	vga_cursor_move
@@ -222,7 +247,7 @@ _interrupt_tty_putchar_ascii:
 	push	ds
 	cmp		al,		0x0A ;'\n'
 	je		.new_line
-	mov		bx,		KERNEL_OFFSET
+	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
 	mov		ah,		byte[vga_color] ;ax vga_char now
 	mov		bx,		word[vga_pos_cursor]
@@ -274,7 +299,7 @@ _interrupt_tty_next_row:
 ;     dx = 0x03D5
 ;need calc the row now, inc and mul to 80 * VGA_CHAR_SIZE
 	push	ds
-	mov		ax,		KERNEL_OFFSET
+	mov		ax,		KERNEL_SEGMENT
 	mov		ds,		ax
 	call	tty_next_row
 	pop		ds
@@ -285,7 +310,7 @@ _interrupt_get_keyboard_input:
 ;in:
 ;out: al = 0 if buffer empty, else scancode
 	push	ds
-	mov		bx,		KERNEL_OFFSET
+	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
 	call	pop_kb_buf
 	pop		ds
@@ -296,7 +321,7 @@ _interrupt_scancode_to_ascii:
 ;out: al = 0 if char not printable, else ascii
 ;	  bx = al
 	push	ds
-	mov		bx,		KERNEL_OFFSET
+	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
 	call	scancode_to_ascii
 	pop		ds
@@ -311,7 +336,7 @@ _interrupt_int_to_ascii:
 ;	  al = high char in str
 ;	  dx = high sign in int
 	push	ds
-	mov		bx,		KERNEL_OFFSET
+	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
 	call	int_to_ascii
 	pop		ds
@@ -326,7 +351,7 @@ _interrupt_uint_to_ascii:
 ;	  al = high char in str
 ;	  dx = high sign in uint
 	push	gs
-	mov		bx,		KERNEL_OFFSET
+	mov		bx,		KERNEL_SEGMENT
 	mov		gs,		bx
 
 	mov		di,		num_to_ascii_buf
@@ -380,9 +405,9 @@ _interrupt_rand_int:
 ;in:
 ;out: ax = pseudo random number
 ;	  dx = ???
-;	  bx = KERNEL_OFFSET
+;	  bx = KERNEL_SEGMENT
 	push	ds
-	mov		bx,		KERNEL_OFFSET
+	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
 	call	rand_int
 	pop		ds
@@ -391,9 +416,9 @@ _interrupt_rand_int:
 _interrupt_set_rand_seed:
 ;in:  ax = seed
 ;out: ax = seed
-;	  bx = KERNEL_OFFSET
+;	  bx = KERNEL_SEGMENT
 	push	ds
-	mov		bx,		KERNEL_OFFSET
+	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
 	call	set_rand_seed
 	pop		ds
