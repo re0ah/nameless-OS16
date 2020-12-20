@@ -175,14 +175,13 @@ scancode_to_ascii:
 	mov		bl,		byte[kb_shift_pressed]
 	test	bl,		bl
 	je		.if_shift_not_pressed
-	cmp		al,		0x35
+	cmp		al,		0x53
 	ja		.not_printable
 	movzx	bx,		al
 	mov		al,		byte[bx + SCANCODE_SET_WITH_SHIFT]
 	call	if_caps
 	jcxz	.caps_not_set
-	call	caps_to_char
-	retn
+	jmp		caps_to_char
 .if_shift_not_pressed:
 	cmp		al,		0x53
 	ja		.not_printable
@@ -190,9 +189,8 @@ scancode_to_ascii:
 	mov		al,		byte[bx + SCANCODE_SET]
 	call	if_caps
 	jcxz	.caps_not_set
-	call	char_to_caps
-.caps_not_set:
-	retn
+	jmp		char_to_caps
 .not_printable:
 	xor		al,		al
+.caps_not_set:
 	retn

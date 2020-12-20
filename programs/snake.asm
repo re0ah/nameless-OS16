@@ -103,6 +103,7 @@ snake:
 	mov		al,		0x03
 	mov		bx,		SYSCALL_VGA_SET_VIDEO_MODE
 	int		0x20
+	xor		ax,		ax	;exit status
 	retf
 
 game_end db 0

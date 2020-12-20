@@ -75,6 +75,7 @@ kernel:
 	call	tty_start
 	jmp		0xFFFF:0000 ;reboot
 
+last_exit_status dw 0
 execve:
 ;in: ds:si = name of file
 ;	 ss:bp = args
@@ -83,7 +84,7 @@ execve:
 ;kernel functions calls throught syscall 0x20, list in the kernel.inc
 	call	fat12_find_entry
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
-	je		.end
+	je		.not_found
 	call	save_interrupts ;pit & keyboard
 	push	es
 	mov		si,		PROCESS_SEGMENT
@@ -97,12 +98,14 @@ execve:
 	mov		ds,		ax
 	call	PROCESS_SEGMENT:0x0000
 	cli
+	mov		word[last_exit_status],	ax
 	mov		ax,		KERNEL_SEGMENT
 	mov		ds,		ax
 	call	restore_interrupts
 	sti
-	xor		ax,		ax	;normal state exit
-.end:
+	retn
+.not_found:
+	mov		word[last_exit_status],	FAT12_ENTRY_NOT_FOUND
 	retn
 
 %include "vga.asm"

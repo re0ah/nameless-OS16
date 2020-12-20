@@ -24,4 +24,5 @@
 ;For more information, please refer to <http://unlicense.org/>
 bits 16
 fm:
+	xor		ax,		ax	;exit status
 	retf

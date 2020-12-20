@@ -26,4 +26,5 @@ bits 16
 %include "../source/syscall.inc"
 
 pwd:
+	xor		ax,		ax	;exit status
 	retf

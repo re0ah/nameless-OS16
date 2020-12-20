@@ -94,8 +94,6 @@ keyboard_int:
 	je		.exit
 	cmp		al,		0xEE
 	je		.exit
-	cmp		al,		0xAA
-	je		.exit
 	cmp		al,		0xFA
 	je		.exit
 
@@ -327,8 +325,7 @@ wait_keyboard_input:
 .wait_in:
 	cmp		byte[kb_buf_pos],	0
 	je		.wait
-	call	pop_kb_buf
-	retn
+	jmp		pop_kb_buf
 
 kb_shift_pressed db 0
 check_shift_pressed:
@@ -336,10 +333,10 @@ check_shift_pressed:
 ;set/reset if scancode will shift
 	cmp		al,		0x2A	;left shift  make
 	je		.shift_make
-	cmp		al,		0x36	;right shift make
-	je		.shift_make
 	cmp		al,		0xAA	;left shift  break
 	je		.shift_break
+	cmp		al,		0x36	;right shift make
+	je		.shift_make
 	cmp		al,		0xB6	;right shift break
 	je		.shift_break
 	retn
@@ -351,26 +348,9 @@ check_shift_pressed:
 	retn
 
 if_caps:
-;also check shift pressed
 ;out: cl = caps or not
-;C = caps  state
-;S = shift state
-;RES = result for return
-;_____________
-;| C | S |RES|
-;| 0 | 0 | 0 |
-;| 0 | 1 | 1 |
-;| 1 | 0 | 1 |
-;| 1 | 1 | 0 |
-;-------------
-;it's !(==)
-	;mov		cl,		byte[kb_led_status]
-	;and		cl,		KB_LED_CAPS
-	;cmp		cl,		byte[kb_shift_pressed]
-	;setne	cl
-	;retn
 	mov		cl,		byte[kb_led_status]
-	and		cl,		KB_LED_CAPS
+	and		cx,		KB_LED_CAPS
 	retn
 
 KB_SCANCODE:;That not scancode's of hardware, that scancodes OS.
@@ -642,3 +622,33 @@ SCANCODE_SET_WITH_SHIFT:;(XT SCANCODE SET)
 	db '<'	;MAKE ,,		 #33
 	db '>'	;MAKE .,		 #34
 	db '?'	;MAKE /,		 #35
+	db 0x00	;MAKE R SHIFT,	 #36
+	db '*'	;MAKE KP *,		 #37
+	db 0x00	;MAKE L ALT,	 #38
+	db ' '	;MAKE SPACE,	 #39
+	db 0x00	;MAKE CAPS,		 #3A
+	db 0x00	;MAKE F1,		 #3B
+	db 0x00	;MAKE F2,		 #3C
+	db 0x00	;MAKE F3,		 #3D
+	db 0x00	;MAKE F4,		 #3E
+	db 0x00	;MAKE F5,		 #3F
+	db 0x00	;MAKE F6,		 #40
+	db 0x00	;MAKE F7,		 #41
+	db 0x00	;MAKE F8,		 #42
+	db 0x00	;MAKE F9,		 #43
+	db 0x00	;MAKE F10,		 #44
+	db 0x00 ;MAKE NUM LOCK,	 #45
+	db 0x00	;MAKE SCROLL LCK,#46
+	db '7'	;MAKE KP 7,		 #47
+	db '8'	;MAKE KP 8,		 #48
+	db '9'	;MAKE KP 9,		 #49
+	db '-'	;MAKE KP -,		 #4A
+	db '4'	;MAKE KP 4,		 #4B
+	db '5'	;MAKE KP 5,		 #4C
+	db '6'	;MAKE KP 6,		 #4D
+	db '+'	;MAKE KP +,		 #4E
+	db '1'	;MAKE KP 1,		 #4F
+	db '2'	;MAKE KP 2,		 #50
+	db '3'	;MAKE KP 3,		 #51
+	db '0'	;MAKE KP 0,		 #52
+	db '.'	;MAKE KP .,		 #53

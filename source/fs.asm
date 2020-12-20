@@ -134,7 +134,7 @@ fat12_file_size:
 	call	fat12_find_entry
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
 	je		.not_found
-	call	fat12_file_entry_size
+	jmp		fat12_file_entry_size
 .not_found:
 	retn
 

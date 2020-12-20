@@ -105,6 +105,7 @@ dir:
 	test	al,		al
 	jne		.lp
 	
+	xor		ax,		ax	;exit status
 	retf
 
 print_date:

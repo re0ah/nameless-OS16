@@ -72,7 +72,6 @@ tty_putchar_ascii:
 ;	  if al == 0x0A, then:
 ;		 al = bh
 ;		 bx = word[vga_pos_cursor] / 2
-;		 cx = (num_of_row + 1) * 80
 ;		 dx = 0x03D5
 ;	  else:
 ;		 ah = byte[vga_color]
@@ -82,17 +81,14 @@ tty_putchar_ascii:
 	test	al,		al
 	je		.end
 	cmp		al,		0x0A	;'\n'
-	je		.new_line
+	je		tty_next_row
 	mov		ah,		byte[vga_color]		;ax vga_char now
 	mov		bx,		word[vga_pos_cursor]
 	mov		word[es:bx],	ax			;print in video buffer
 	add		bx,		VGA_CHAR_SIZE
 	mov		word[vga_pos_cursor], bx
-	call	vga_cursor_move.without_get_pos_cursor_with_div
+	jmp		vga_cursor_move.without_get_pos_cursor_with_div
 .end:
-	retn
-.new_line:
-	call	tty_next_row
 	retn
 
 tty_print_ascii:
@@ -101,7 +97,6 @@ tty_print_ascii:
 ;out: if last_char == 0, then:
 ;		 al = 0
 ;		 si = end of str
-;		 cx = 0
 ;	  if last_char == 0x0A, then:
 ;		 al = bh
 ;		 bx = word[vga_pos_cursor] / 2
@@ -114,21 +109,19 @@ tty_print_ascii:
 ;		 bx = word[vga_pos_cursor] / 2
 ;		 dx = 0x03D5
 ;		 si = end of str
-;		 cx = 0
 .lp:
 	lodsb	;al <- ds:si
-	push	cx
 	call	tty_putchar_ascii
-	pop		cx
 	loop	.lp
 	retn
 
 tty_next_row_div_v db 160
 tty_next_row:
 ;in:  
-;out: al = bh
+;out: 
+;	  ah = high byte of word[vga_pos_cursor] & word[tty_input_start]
+;	  al = bh
 ;	  bx = word[vga_pos_cursor] / 2
-;	  cx = (num_of_row + 1) * 80
 ;	  dx = 0x03D5
 ;need calc the row now, inc and mul to 80 * VGA_CHAR_SIZE
 	mov		ax,		word[vga_pos_cursor]
@@ -140,43 +133,38 @@ tty_next_row:
 
 ;mul to 80
 	shl		ax,		5
-	mov		cx,		ax
+	mov		bx,		ax
 	shl		ax,		2
-	add		ax,		cx
+	add		ax,		bx
 
 	mov		word[vga_pos_cursor],	ax
 	mov		word[tty_input_start],	ax
 
 	mov		bx,		ax
-	call	vga_cursor_move.without_get_pos_cursor
-	retn
+	jmp		vga_cursor_move.without_get_pos_cursor
 
 argv_ptr dw 0
 get_tty_input_ascii:
-;in:  di = addr where save ascii
-;	  es = segment where save ascii
-;out: si = str
+;in:  di = addr on stack where save ascii
+;out: si = end of str
 ;	  cx = str len
-;     bx = word[tty_input_start]
 ;	  al = 0
-;save ascii input from VRAM to es:di (args this function)
+;save ascii input from VRAM to ss:di
 	mov		si,		word[tty_input_start]
 .without_get_tty_input_start:
 	mov		cx,		word[vga_pos_cursor]
 .without_both:
-	mov		bx,		si
-	push	ds
-
-	mov		word[argv_ptr],	0
-	mov		ax,		VGA_BUFFER	
-	mov		ds,		ax
+	xor		bp,		bp		;word[argv_ptr]
 .copy:
-	lodsw	;ax (vga char)   <- ds:si, si += 2
-	stosb	;al (ascii char) -> es:di, di += 1
+	mov		ax,		word[es:si]
+	add		si,		VGA_CHAR_SIZE
+	mov		byte[ss:di],	al
+	inc		di
 	cmp		al,		' '
 	jne		.not_space
-	cmp		word[argv_ptr],	0
+	test	bp,		bp
 	jne		.already_set
+	mov		bp,		di
 	mov		word[argv_ptr], di
 .already_set:
 .not_space:
@@ -184,9 +172,7 @@ get_tty_input_ascii:
 	jl		.copy
 ;argv_ptr ending with 0
 	xor		al,		al
-	stosb
-
-	pop		ds
+	mov		byte[ss:di], al
 	retn
 
 tty_push_enter:
@@ -206,34 +192,31 @@ tty_push_enter:
 ;1. save user input on stack
 	mov		si,		ax	;word[tty_input_start]
 	mov		di,		sp
-	push	es
-	mov		ax,		STACK_SEGMENT
-	mov		es,		ax
 	call	get_tty_input_ascii.without_both
-	pop		es
 
 	mov		si,		sp
 	mov		cx,		dx
-	push	dx	;save for restore after execve and clean stack
-	push	es
+	push	dx ;save for restore after execve and clean stack
+	push	es ;save for restore after str_to_fat12_filename
+	push	ds ;save for restore after str_to_fat12_filename
+	;es = ds
 	push	ds
-	mov		ax,		ds
-	mov		es,		ax
-	mov		ax,		ss
-	mov		ds,		ax
+	pop		es
+	;ds = ss
+	push	ss
+	pop		ds
 	call	str_to_fat12_filename
 	pop		ds
 	pop		es
 
-	mov		si,		FAT12_STR
-	mov		cx,		FAT12_STRLEN
-	call	tty_print_ascii
+;	mov		si,		FAT12_STR
+;	mov		cx,		FAT12_STRLEN
+;	call	tty_print_ascii
 
-	mov		si,		FAT12_STR
+;	mov		si,		FAT12_STR ;already in si after str_to_fat12_filename call
 	call	execve
-	mov		bp,		ax
-	pop		dx
-	;clear stack
+	pop		dx		;for clean stack
+;clean stack
 	mov		di,		sp
 	push	es
 	mov		ax,		ss
@@ -246,15 +229,19 @@ tty_push_enter:
 	add		sp,		dx
 	add		sp,		6
 
-	mov		ax,		bp
-	test	ax,		ax
-	je		.execve_success
-
-	mov		si,		BAD_COMMAND_MSG
-	mov		cx,		BAD_COMMAND_MSG_SIZE
+	mov		ax,		word[last_exit_status]
+	cmp		ax,		FAT12_ENTRY_NOT_FOUND
+	je		.not_found
+;	test	ax,		ax
+;	je		.execve_success
+.error_success:
+	jmp		.exit
+.not_found:
+	mov		si,		PROGRAM_NOT_FOUND
+	mov		cx,		PROGRAM_NOT_FOUND_SIZE
 	call	tty_print_ascii
-.execve_success:
 
+.execve_success:
 .exit:
 	call	tty_next_row
 	call	tty_print_path
@@ -277,7 +264,7 @@ tty_push_backspace:
 	mov		ah,		byte[vga_color]
 	mov		word[es:bx],	ax
 	mov		word[vga_pos_cursor],	bx
-	call	vga_cursor_move.without_get_pos_cursor_with_div
+	jmp		vga_cursor_move.without_get_pos_cursor_with_div
 .exit:
 	retn
 
@@ -296,11 +283,11 @@ tty_print_path:
 	add		word[tty_input_start], cx
 	retn
 
-HELLO_MSG db "namelessOS16 v 5", 0x0A
+HELLO_MSG db "namelessOS16 v 6", 0x0A
 	HELLO_MSG_SIZE equ $-HELLO_MSG
 
-BAD_COMMAND_MSG db 0x0A, "command not found"
-	BAD_COMMAND_MSG_SIZE equ $-BAD_COMMAND_MSG
+PROGRAM_NOT_FOUND db 0x0A, "program not found"
+	PROGRAM_NOT_FOUND_SIZE equ $-PROGRAM_NOT_FOUND 
 
 tty_input_start dw 0
 pre_path_now	db '['	;dont touch!

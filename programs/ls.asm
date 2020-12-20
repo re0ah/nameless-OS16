@@ -94,6 +94,7 @@ ls:
 	test	al,		al
 	jne		.lp
 	
+	xor		ax,		ax	;exit status
 	retf
 
 FAT12_FNAME db "           "

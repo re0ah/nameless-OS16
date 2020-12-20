@@ -45,6 +45,7 @@ date:
 	mov		cx,		PRINT_DATE_BUF_SIZE
 	mov		bx,		SYSCALL_TTY_PRINT_ASCII
 	int		0x20
+	xor		ax,		ax	;exit status
 	retf
 print_date_buf db "year-mn-dy h :m :s "
 	print_date_buf_end equ $

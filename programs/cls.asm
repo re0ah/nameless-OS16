@@ -31,4 +31,5 @@ cls:
 	xor		cx,		cx
 	mov		bx,		SYSCALL_VGA_CURSOR_MOVE
 	int		0x20
+	xor		ax,		ax	;exit status
 	retf

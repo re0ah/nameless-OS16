@@ -132,8 +132,7 @@ vga_clear_screen:
 
 	xor		bx,		bx
 	mov		word[vga_pos_cursor], bx
-	call	vga_cursor_move.without_get_pos_cursor
-	retn
+	jmp		vga_cursor_move.without_get_pos_cursor
 
 vga_page_now db 0
 vga_page_set:
@@ -148,18 +147,18 @@ vga_page_up:
 	je		.page_top
 	dec		al
 	mov		byte[vga_page_now],	al
-	call	vga_page_set
+	jmp		vga_page_set
 .page_top:
 	retn
 
 vga_page_down:
 	mov		al,		byte[vga_page_now]
 	cmp		al,		VGA_PAGES - 1
-	je		.page_top
+	je		.page_down
 	inc		al
 	mov		byte[vga_page_now],	al
-	call	vga_page_set
-.page_top:
+	jmp		vga_page_set
+.page_down:
 	retn
 
 vga_cursor_move:

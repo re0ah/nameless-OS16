@@ -269,7 +269,6 @@ _interrupt_tty_print_ascii:
 ;out: if last_char == 0, then:
 ;		 al = 0
 ;		 si = end of str
-;		 cx = 0
 ;	  if last_char == 0x0A, then:
 ;		 al = bh
 ;		 bx = word[vga_pos_cursor] / 2
@@ -282,12 +281,9 @@ _interrupt_tty_print_ascii:
 ;		 bx = word[vga_pos_cursor] / 2
 ;		 dx = 0x03D5
 ;		 si = end of str
-;		 cx = 0
 .lp:
 	lodsb	;al <- ds:si
-	push	cx
 	call	_interrupt_tty_putchar_ascii
-	pop		cx
 	loop	.lp
 	retn
 
@@ -295,7 +291,6 @@ _interrupt_tty_next_row:
 ;in:
 ;out: al = bh
 ;     bx = word[vga_pos_cursor] / 2
-;     cx = (num_of_row + 1) * 80
 ;     dx = 0x03D5
 ;need calc the row now, inc and mul to 80 * VGA_CHAR_SIZE
 	push	ds

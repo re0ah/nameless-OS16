@@ -28,7 +28,7 @@ bits 16
 FAT12_ENTRY_NOT_FOUND equ 0xFFFF
 
 fstat:
-	jmp		get_fname_from_argv
+	call	get_fname_from_argv
 	mov		bx,		SYSCALL_FAT12_FILE_SIZE
 	mov		si,		tst
 	int		0x20
@@ -59,12 +59,17 @@ fstat:
 	mov		cx,		FILE_NOT_FOUND_SIZE 
 	mov		bx,		SYSCALL_TTY_PRINT_ASCII
 	int		0x20
+
+	mov		ax,		-1	;exit status
 	retf
 
 get_fname_from_argv:
 	mov		si,		bp
+	mov		di,		tst
 .count:
 	mov		al,		byte[ss:si]
+	mov		byte[ds:di],	al
+	inc		di
 	inc		si
 	test	al,		al
 	je		.end
@@ -73,10 +78,9 @@ get_fname_from_argv:
 .end:
 	sub		si,		bp
 	mov		cx,		si
-	mov		si,		bp
-	mov		bx,		SYSCALL_TTY_PRINT_ASCII
-	int		0x20
-	retf
+	mov		si,		tst
+
+	retn
 
 print_fsize:
 ;in: ax = size
