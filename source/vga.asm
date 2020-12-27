@@ -123,15 +123,15 @@ vga_clear_screen:
 ;	  cx = 0
 ;	  bx = 0
 ;	  dx = 0x03D5
-	mov		ah,		byte[vga_color]
+	mov		ah,		byte[ds:vga_color]
 	mov		al,		' '
 ;fill with ax first page of VGA_BUFFER
 	xor		di,		di
 	mov		cx,		VGA_PAGE_NUM_CHARS
-	rep		stosw	;ax -> es:di
+	rep		stosw	;word[es:di] = ax
 
 	xor		bx,		bx
-	mov		word[vga_pos_cursor], bx
+	mov		word[ds:vga_pos_cursor], bx
 	jmp		vga_cursor_move.without_get_pos_cursor
 
 vga_page_now db 0
@@ -142,21 +142,21 @@ vga_page_set:
 	retn
 
 vga_page_up:
-	mov		al,		byte[vga_page_now]
+	mov		al,		byte[ds:vga_page_now]
 	test	al,		al
 	je		.page_top
 	dec		al
-	mov		byte[vga_page_now],	al
+	mov		byte[ds:vga_page_now],	al
 	jmp		vga_page_set
 .page_top:
 	retn
 
 vga_page_down:
-	mov		al,		byte[vga_page_now]
+	mov		al,		byte[ds:vga_page_now]
 	cmp		al,		VGA_PAGES - 1
 	je		.page_down
 	inc		al
-	mov		byte[vga_page_now],	al
+	mov		byte[ds:vga_page_now],	al
 	jmp		vga_page_set
 .page_down:
 	retn
@@ -166,7 +166,7 @@ vga_cursor_move:
 ;out: bx = word[vga_pos_cursor] / 2
 ;	  dx = 0x03D5
 ;	  al = bh
-	mov		bx,		word[vga_pos_cursor]
+	mov		bx,		word[ds:vga_pos_cursor]
 .without_get_pos_cursor_with_div:
 	shr		bx,		1	;div to VGA_CHAR_SIZE
 .without_get_pos_cursor:

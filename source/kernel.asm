@@ -66,14 +66,18 @@ kernel:
 	mov		ax,		STACK_SEGMENT
 	mov		ss,		ax
 	mov		sp,		0xFFFF
+	call	load_isr
 ;init data segment
-	call	load_isr ;from load_isr return ax = KERNEL_SEGMENT
+;from load_isr return ax = KERNEL_SEGMENT
 ;	mov		ax,		KERNEL_SEGMENT
 	mov		ds,		ax
 	call	serial_init
 .to_tty:
 	call	tty_start
 	jmp		0xFFFF:0000 ;reboot
+
+testnamef12 db "TESTNAM SYS"
+testasqweee db "KERNEL  BIN"
 
 last_exit_status dw 0
 execve:
@@ -87,25 +91,26 @@ execve:
 	je		.not_found
 	call	save_interrupts ;pit & keyboard
 	push	es
+;es = PROCESS_SEGMENT
 	mov		si,		PROCESS_SEGMENT
 	mov		es,		si
 	xor		si,		si
 	call	fat12_load_entry
 	pop		es
 ;Now, file was load. Execute him
-	mov		bp,		word[argv_ptr]
+	mov		bp,		word[ds:argv_ptr]
 	mov		ax,		PROCESS_SEGMENT
 	mov		ds,		ax
 	call	PROCESS_SEGMENT:0x0000
 	cli
-	mov		word[last_exit_status],	ax
-	mov		ax,		KERNEL_SEGMENT
-	mov		ds,		ax
+	mov		cx,		KERNEL_SEGMENT
+	mov		ds,		cx
+	mov		word[ds:last_exit_status],	ax
 	call	restore_interrupts
 	sti
 	retn
 .not_found:
-	mov		word[last_exit_status],	FAT12_ENTRY_NOT_FOUND
+	mov		word[ds:last_exit_status],	FAT12_ENTRY_NOT_FOUND
 	retn
 
 %include "vga.asm"
@@ -116,5 +121,7 @@ execve:
 %include "random.asm"
 %include "serial.asm"
 %include "rtc.asm"
+%include "pit.asm"
+%include "keyboard.asm"
 
 KERNEL_SIZE equ $

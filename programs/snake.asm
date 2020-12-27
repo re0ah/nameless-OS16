@@ -85,6 +85,11 @@ snake:
 	mov		di,		DRAW_END_STR_POS
 	mov		cx,		DRAW_END_STR_LEN
 	rep		movsw
+
+	mov		si,		draw_end_str2
+	mov		di,		DRAW_END_STR2_POS
+	mov		cx,		DRAW_END_STR2_LEN
+	rep		movsw
 .wait_keyboard_data:
 	hlt
 	mov		bx,		SYSCALL_GET_KEYBOARD_DATA
@@ -92,11 +97,14 @@ snake:
 	test	al,		al
 	je		.wait_keyboard_data
 	cmp		al,		0x1C	;scancode enter
-	jne		.exit
+	jne		.not_enter
 	mov		word[snake_pos], SNAKE_POS_DEFAULT
 	mov		word[snake_direction], SNAKE_TO_STOP
 	mov		word[score],	0
 	jmp		.start
+.not_enter:
+	cmp		al,		0x01	;scancode esc
+	jne		.wait_keyboard_data
 .exit:
 	mov		bx,		SYSCALL_VGA_CURSOR_ENABLE
 	int		0x20
@@ -418,6 +426,13 @@ draw_end_str db "F", 0x07, "o", 0x07, "r", 0x07, " ", 0x07, "r", 0x07
 	DRAW_END_STR_SIZE equ $-draw_end_str
 	DRAW_END_STR_LEN  equ DRAW_END_STR_SIZE / 2
 	DRAW_END_STR_POS equ 490 ;6 row, 5 char
+draw_end_str2 db "F", 0x07, "o", 0x07, "r", 0x07, " ", 0x07, "e", 0x07
+			  db "x", 0x07, "i", 0x07, "t", 0x07, " ", 0x07, "p", 0x07,
+			  db "u", 0x07, "s", 0x07, "h", 0x07, " ", 0x07, "E", 0x07,
+			  db "S", 0x07, "C", 0x07
+	DRAW_END_STR2_SIZE equ $-draw_end_str2
+	DRAW_END_STR2_LEN  equ DRAW_END_STR2_SIZE / 2
+	DRAW_END_STR2_POS equ 654 ;8 row, 7 char
 draw_menu:
 	mov		ax,		0x0723	;bg=black, fg=gray, char='#'
 	mov		cx,		28

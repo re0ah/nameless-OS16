@@ -159,7 +159,7 @@ kb_spec_scancode:
 	je		kb_break_print
 
 	movzx	bx,		al
-	mov		al,		byte[.data_table + bx]
+	mov		al,		byte[ds:.data_table + bx]
 	call	push_kb_buf
 
 	pop		ds
@@ -232,11 +232,11 @@ push_kb_buf:
 ;in:  al = scancode
 ;out: al = KB_OVERFLOW if error, else scancode
 ;	  bx = byte[kb_buf_pos - 1]
-	movzx	bx,		byte[kb_buf_pos]
+	movzx	bx,		byte[ds:kb_buf_pos]
 	cmp		bx,		KB_BUF_SIZE
 	je		.end_overflow
-	mov		byte[bx + kb_buf],	al
-	inc		byte[kb_buf_pos]
+	mov		byte[ds:bx + kb_buf],	al
+	inc		byte[ds:kb_buf_pos]
 	retn
 .end_overflow:
 ;	mov		al,		KB_OVERFLOW
@@ -248,12 +248,12 @@ pop_kb_buf:
 ;in:  al = scancode
 ;out: al = KB_EMPTY if error, else scancode
 ;	  bx = byte[kb_buf_pos]
-	movzx	bx,		byte[kb_buf_pos]
+	movzx	bx,		byte[ds:kb_buf_pos]
 	test	bx,		bx
 	je		.end_empty
 	dec		bl
-	mov		byte[kb_buf_pos],	bl
-	mov		al,		byte[bx + kb_buf]
+	mov		byte[ds:kb_buf_pos],	bl
+	mov		al,		byte[ds:bx + kb_buf]
 	retn
 .end_empty:
 ;	mov		al,		KB_EMPTY
@@ -265,7 +265,7 @@ keyboard_set_led:
 ;out:
 ;check if scancode equal of caps/num/scrl lock. Set/Reset them and
 ;set LED state
-	mov		bl,		byte[kb_led_status]
+	mov		bl,		byte[ds:kb_led_status]
 	mov		cl,		bl
 	not		cl
 	cmp		al,		0x3A	;caps lock
@@ -286,7 +286,7 @@ keyboard_set_led:
 		and		cl,		KB_LED_NUM
 .write_to_led:
 	or		bl,		cl
-	mov		byte[kb_led_status],	bl
+	mov		byte[ds:kb_led_status],	bl
 .write_port:
 
 ;	mov		al,		KB_WRITE_LEDS
@@ -323,7 +323,7 @@ wait_keyboard_input:
 .wait:
 	hlt
 .wait_in:
-	cmp		byte[kb_buf_pos],	0
+	cmp		byte[ds:kb_buf_pos],	0
 	je		.wait
 	jmp		pop_kb_buf
 
@@ -341,10 +341,10 @@ check_shift_pressed:
 	je		.shift_break
 	retn
 .shift_make:
-	mov		byte[kb_shift_pressed],	1
+	mov		byte[ds:kb_shift_pressed],	1
 	retn
 .shift_break:
-	mov		byte[kb_shift_pressed],	0
+	mov		byte[ds:kb_shift_pressed],	0
 	retn
 
 if_caps:

@@ -25,9 +25,10 @@ os16.flp: clean
 os16.iso: os16.flp
 	rm -f images/os16.iso
 	mkisofs -quiet -V 'os16' -input-charset iso8859-1 -o images/os16.iso -b os16.flp images
+	chmod 666 images/os16.flp
 
 run: os16.iso
-	qemu-system-i386 -serial stdio -cdrom images/os16.iso
+	qemu-system-i386 -serial stdio -fda images/os16.flp
 
 %.bin: %.asm
 	$(AS) $(ASFLAGS) $< -o $@

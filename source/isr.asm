@@ -23,21 +23,18 @@
 
 ;For more information, please refer to <http://unlicense.org/>
 
-PICM	equ	0x20	;master PIC
-PICS	equ	0xA0	;slave PIC
+PICM	equ	0x20	;master PIC port
+PICS	equ	0xA0	;slave PIC  port
 PIC_EOI	equ	0x20	;end of interrupt code
 
-%include "pit.asm"
-%include "keyboard.asm"
+IVT_ADDR_PIT_FUNC		  equ 0x0020
+IVT_ADDR_PIT_SEGMENT	  equ 0x0022
 
-ISR_ADDR_PIT_FUNC		  equ 0x0020
-ISR_ADDR_PIT_SEGMENT	  equ 0x0022
+IVT_ADDR_KEYBOARD_FUNC	  equ 0x0024
+IVT_ADDR_KEYBOARD_SEGMENT equ 0x0026
 
-ISR_ADDR_KEYBOARD_FUNC	  equ 0x0024
-ISR_ADDR_KEYBOARD_SEGMENT equ 0x0026
-
-ISR_ADDR_SYSCALL_FUNC	  equ 0x0080 ;int 0x20 
-ISR_ADDR_SYSCALL_SEGMENT  equ 0x0082
+IVT_ADDR_SYSCALL_FUNC	  equ 0x0080 ;int 0x20 
+IVT_ADDR_SYSCALL_SEGMENT  equ 0x0082
 load_isr:
 ;in:
 ;out: ax = KERNEL_SEGMENT
@@ -48,12 +45,12 @@ load_isr:
 	xor		ax,		ax	;ISR offset
 	mov		gs,		ax
 	mov		ax,		KERNEL_SEGMENT
-	mov		word[gs:ISR_ADDR_PIT_FUNC],			pit_int
-	mov		word[gs:ISR_ADDR_PIT_SEGMENT],		ax
-	mov		word[gs:ISR_ADDR_KEYBOARD_FUNC],	keyboard_int
-	mov		word[gs:ISR_ADDR_KEYBOARD_SEGMENT],	ax
-	mov		word[gs:ISR_ADDR_SYSCALL_FUNC],		syscall
-	mov		word[gs:ISR_ADDR_SYSCALL_SEGMENT],	ax
+	mov		word[gs:IVT_ADDR_PIT_FUNC],			pit_int
+	mov		word[gs:IVT_ADDR_PIT_SEGMENT],		ax
+	mov		word[gs:IVT_ADDR_KEYBOARD_FUNC],	keyboard_int
+	mov		word[gs:IVT_ADDR_KEYBOARD_SEGMENT],	ax
+	mov		word[gs:IVT_ADDR_SYSCALL_FUNC],		syscall
+	mov		word[gs:IVT_ADDR_SYSCALL_SEGMENT],	ax
 	sti
 	retn
 
@@ -68,16 +65,19 @@ save_interrupts:
 	push	es
 	push	ds
 
+;es = ds (KERNEL_SEGMENT)
 	mov		ax,		ds
 	mov		es,		ax
+;ds = ISR_SEGMENT
 	xor		ax,		ax	;ISR segment
 	mov		ds,		ax
-	mov		si,		ISR_ADDR_PIT_FUNC
+;copy from IVT to list above values of 2 interrupts
+	mov		si,		IVT_ADDR_PIT_FUNC
 	mov		di,		pit_interrupt_handler
-	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
-	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
-	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
-	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
+	movsw	;word[es:di] = word[ds:si]
+	movsw	;word[es:di] = word[ds:si]
+	movsw	;word[es:di] = word[ds:si]
+	movsw	;word[es:di] = word[ds:si]
 	;mov		ax,		word[gs:0x0020]
 	;mov		word[pit_interrupt_handler], ax
 	;mov		ax,		word[gs:0x0022]
@@ -98,14 +98,16 @@ restore_interrupts:
 	pusha
 	push	es
 
+;es = ISR_SEGMENT
 	xor		ax,		ax	;ISR segment
 	mov		es,		ax
+;copy from list above to IVT values of 2 interrupts
 	mov		si,		pit_interrupt_handler
-	mov		di,		ISR_ADDR_PIT_FUNC
-	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
-	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
-	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
-	movsw	;word[ds:si] -> word[es:di], si+=2, di+=2
+	mov		di,		IVT_ADDR_PIT_FUNC
+	movsw	;word[es:di] = word[ds:si]
+	movsw	;word[es:di] = word[ds:si]
+	movsw	;word[es:di] = word[ds:si]
+	movsw	;word[es:di] = word[ds:si]
 
 	;xor		ax,		ax
 	;mov		gs,		ax
@@ -123,16 +125,17 @@ restore_interrupts:
 	sti
 	retn
 
-%include "syscall.inc"
 ;bx - number of syscall
 syscall:
 ;in:  bx = number of syscall
 ;out: depending on syscall
 	push	gs
-	push	ax
-	mov		ax,		KERNEL_SEGMENT
-	mov		gs,		ax	;throught gs segment get address from table
-	pop		ax
+	push	bx
+;gs = KERNEL_SEGMENT
+	mov		bx,		KERNEL_SEGMENT
+	mov		gs,		bx	;throught gs segment get address from table
+	pop		bx
+;getting address of function
 	mov		bx,		word[gs:bx + .jump_table]
 	pop		gs
 	call	bx
@@ -145,38 +148,40 @@ syscall:
 	dw		vga_set_video_mode				;#4
 	dw		_interrupt_tty_putchar_ascii	;#5
 	dw		_interrupt_tty_print_ascii		;#6
-	dw		_interrupt_tty_next_row			;#7
-	dw		fat12_read_root					;#8
-	dw		fat12_find_entry				;#9
-	dw		fat12_load_entry				;#10
-	dw		fat12_file_size					;#11
-	dw		fat12_file_entry_size			;#12
-	dw		_interrupt_pit_set_frequency	;#13
-	dw		_interrupt_pit_get_frequency	;#14
-	dw		_interrupt_get_keyboard_input	;#15
-	dw		_interrupt_scancode_to_ascii	;#16
-	dw		_interrupt_int_to_ascii			;#17
-	dw		_interrupt_uint_to_ascii		;#18
-	dw		_interrupt_set_pit_int			;#19
-	dw		_interrupt_set_keyboard_int		;#20
-	dw		_interrupt_rand_int				;#21
-	dw		_interrupt_set_rand_seed		;#22
-	dw		rtc_get_sec						;#23
-	dw		rtc_get_min						;#24
-	dw		rtc_get_hour					;#25
-	dw		rtc_get_day						;#26
-	dw		rtc_get_month					;#27
-	dw		rtc_get_year					;#28
-	dw		rtc_get_century					;#29
-	dw		rtc_get_week					;#30
-	dw		rtc_get_ascii_sec				;#31
-	dw		rtc_get_ascii_min				;#32
-	dw		rtc_get_ascii_hour				;#33
-	dw		rtc_get_ascii_day				;#34
-	dw		rtc_get_ascii_month				;#35
-	dw		rtc_get_ascii_year				;#36
-	dw		rtc_get_ascii_century			;#37
-	dw		rtc_get_ascii_week				;#38
+	dw		_interrupt_tty_print_ascii_c	;#7
+	dw		_interrupt_tty_next_row			;#8
+	dw		fat12_read_root					;#9
+	dw		fat12_find_entry				;#10
+	dw		fat12_load_entry				;#11
+	dw		fat12_file_size					;#12
+	dw		fat12_file_entry_size			;#13
+	dw		_interrupt_pit_set_frequency	;#14
+	dw		_interrupt_pit_get_frequency	;#15
+	dw		_interrupt_get_keyboard_input	;#16
+	dw		_interrupt_scancode_to_ascii	;#17
+	dw		_interrupt_int_to_ascii			;#18
+	dw		_interrupt_uint_to_ascii		;#19
+	dw		_interrupt_set_pit_int			;#20
+	dw		_interrupt_set_keyboard_int		;#21
+	dw		_interrupt_rand_int				;#22
+	dw		_interrupt_set_rand_seed		;#23
+	dw		rtc_get_sec						;#24
+	dw		rtc_get_min						;#25
+	dw		rtc_get_hour					;#26
+	dw		rtc_get_day						;#27
+	dw		rtc_get_month					;#28
+	dw		rtc_get_year					;#29
+	dw		rtc_get_century					;#30
+	dw		rtc_get_week					;#31
+	dw		rtc_get_ascii_sec				;#32
+	dw		rtc_get_ascii_min				;#33
+	dw		rtc_get_ascii_hour				;#34
+	dw		rtc_get_ascii_day				;#35
+	dw		rtc_get_ascii_month				;#36
+	dw		rtc_get_ascii_year				;#37
+	dw		rtc_get_ascii_century			;#38
+	dw		rtc_get_ascii_week				;#39
+	dw		_interrupt_execve				;#40
 
 _interrupt_vga_clear_screen:
 ;in: 
@@ -211,7 +216,7 @@ _interrupt_pit_get_frequency:
 	push	ds
 	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
-	mov		ax,		word[pit_frequency]
+	mov		ax,		word[ds:pit_frequency]
 	pop		ds
 	retn
 
@@ -223,7 +228,7 @@ _interrupt_vga_cursor_move:
 	push	ds
 	mov		ax,		KERNEL_SEGMENT
 	mov		ds,		ax
-	mov		word[vga_pos_cursor],	cx
+	mov		word[ds:vga_pos_cursor],	cx
 	call	vga_cursor_move
 	pop		ds
 	retn
@@ -249,11 +254,11 @@ _interrupt_tty_putchar_ascii:
 	je		.new_line
 	mov		bx,		KERNEL_SEGMENT
 	mov		ds,		bx
-	mov		ah,		byte[vga_color] ;ax vga_char now
-	mov		bx,		word[vga_pos_cursor]
+	mov		ah,		byte[ds:vga_color] ;ax vga_char now
+	mov		bx,		word[ds:vga_pos_cursor]
 	mov		word[es:bx],	ax
 	add		bx,		VGA_CHAR_SIZE
-	mov		word[vga_pos_cursor], bx
+	mov		word[ds:vga_pos_cursor], bx
 	call	vga_cursor_move.without_get_pos_cursor_with_div
 	pop		ds
 .end:
@@ -269,16 +274,18 @@ _interrupt_tty_print_ascii:
 ;out: if last_char == 0, then:
 ;		 al = 0
 ;		 si = end of str
+;		 cx = 0
 ;	  if last_char == 0x0A, then:
 ;		 al = bh
 ;		 bx = word[vga_pos_cursor] / 2
-;		 cx = (num_of_row + 1) * 80
+;		 cx = 0
 ;		 dx = 0x03D5
 ;		 si = end of str
 ;	  else:
 ;		 ah = byte[vga_color]
 ;		 al = bh
 ;		 bx = word[vga_pos_cursor] / 2
+;		 cx = 0
 ;		 dx = 0x03D5
 ;		 si = end of str
 .lp:
@@ -286,6 +293,23 @@ _interrupt_tty_print_ascii:
 	call	_interrupt_tty_putchar_ascii
 	loop	.lp
 	retn
+
+_interrupt_tty_print_ascii_c:
+;in:  si = ptr to str what end with \0
+;out: al = 0
+;	  ah = byte[vga_color]
+;	  bx = word[vga_pos_cursor] / 2
+;	  dx = 0x03D5
+;	  si = end of str
+.lp:
+	lodsb	;al <- ds:si
+	test	al,		al
+	je		.end
+	call	_interrupt_tty_putchar_ascii
+	jmp		.lp
+.end:
+	retn
+
 
 _interrupt_tty_next_row:
 ;in:
@@ -356,7 +380,7 @@ _interrupt_uint_to_ascii:
 	xor		dx,		dx	;clear, because used in div instruction (dx:ax)
 	div		cx			;ax = quotient, dx = remainder
 	add		dl,		bl	;transform to ascii
-	mov		byte[di],	dl
+	mov		byte[gs:di],	dl
 	inc		di
 	test	ax,		ax
 	jne		.lp
@@ -364,8 +388,8 @@ _interrupt_uint_to_ascii:
 	lea		cx,		[di - num_to_ascii_buf] ;calc len of str
 .lp2:	;invert copy from di to si
 	dec		di
-	mov		al,		byte[di]
-	mov		byte[si],	al
+	mov		al,		byte[gs:di]
+	mov		byte[ds:si],	al
 	inc		si
 	cmp		di,		num_to_ascii_buf
 	jne		.lp2
@@ -417,4 +441,26 @@ _interrupt_set_rand_seed:
 	mov		ds,		bx
 	call	set_rand_seed
 	pop		ds
+	retn
+
+_interrupt_execve:
+;in: ds:si = name of file
+;	 ?s:bp = args
+;out:
+;need load the fat12, found entry and load to bin to memory on PROCESS_SEGMENT
+;kernel functions calls throught syscall 0x20, list in the kernel.inc
+	call	fat12_find_entry
+	cmp		ax,		FAT12_ENTRY_NOT_FOUND
+	je		.not_found
+	push	es
+	mov		si,		PROCESS_SEGMENT
+	mov		es,		si
+	xor		si,		si
+	call	fat12_load_entry
+	pop		es
+;Now, file was load. Execute him
+	mov		ax,		PROCESS_SEGMENT
+	mov		ds,		ax
+	jmp		PROCESS_SEGMENT:0x0000
+.not_found:
 	retn

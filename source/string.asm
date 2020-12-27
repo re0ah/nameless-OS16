@@ -36,7 +36,7 @@ int_to_ascii:
 ;if int < 0, make them positive (neg on negative numbers
 ;make positive numbers), write '-' in string buffer
 	neg		ax
-	mov		byte[si],	'-'
+	mov		byte[ds:si],	'-'
 	inc		si
 .not_neg_num:
 	call	uint_to_ascii
@@ -59,16 +59,16 @@ uint_to_ascii:
 	xor		dx,		dx	;clear, because used in div instruction (dx:ax)
 	div		cx			;ax = quotient, dx = remainder
 	add		dl,		bl	;transform to ascii
-	mov		byte[di],	dl
+	mov		byte[ds:di],	dl
 	inc		di
 	test	ax,		ax
 	jne		.lp
 .end_lp:
-	lea		cx,		[di - num_to_ascii_buf] ;calc len of str
+	lea		cx,		[ds:di - num_to_ascii_buf] ;calc len of str
 .lp2:	;invert copy from di to si
 	dec		di
-	mov		al,		byte[di]
-	mov		byte[si],	al
+	mov		al,		byte[ds:di]
+	mov		byte[ds:si],	al
 	inc		si
 	cmp		di,		num_to_ascii_buf
 	jne		.lp2
@@ -172,13 +172,13 @@ scancode_to_ascii:
 ;in:  al = scancode
 ;out: al = 0 if char not printable, else ascii
 ;	  bx = al
-	mov		bl,		byte[kb_shift_pressed]
+	mov		bl,		byte[ds:kb_shift_pressed]
 	test	bl,		bl
 	je		.if_shift_not_pressed
 	cmp		al,		0x53
 	ja		.not_printable
 	movzx	bx,		al
-	mov		al,		byte[bx + SCANCODE_SET_WITH_SHIFT]
+	mov		al,		byte[ds:bx + SCANCODE_SET_WITH_SHIFT]
 	call	if_caps
 	jcxz	.caps_not_set
 	jmp		caps_to_char
@@ -186,7 +186,7 @@ scancode_to_ascii:
 	cmp		al,		0x53
 	ja		.not_printable
 	movzx	bx,		al
-	mov		al,		byte[bx + SCANCODE_SET]
+	mov		al,		byte[ds:bx + SCANCODE_SET]
 	call	if_caps
 	jcxz	.caps_not_set
 	jmp		char_to_caps

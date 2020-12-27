@@ -150,5 +150,84 @@ BCD_to_ascii_2_bytes:
 	shr		al,		4
 	add		ax,		0x3030
 
-	mov		word[si],	ax
+	mov		word[ds:si],	ax
 	retn
+
+bcd_to_number:
+;in:  al = BCD
+;out: al = number
+	push	bx
+	push	cx
+	mov		ah,		al
+	xor		al,		al
+	mov		bh,		ah
+	and		bh,		0x0F
+	and		ah,		0xF0
+	ror		ah,		4
+	mov		cl,		10
+	mov		al,		ah
+	and		ax,		0x00FF
+	mul		cl
+	add		al,		bh
+	pop		cx
+	pop		bx
+	retn
+
+rtc_get_sec_bin:
+;out: al = seconds from CMOS
+;	mov		al,		RTC_SECONDS
+	xor		al,		al
+rtc_get_info_bin:
+;in: al = rtc register address
+	out		RTC_SELECT_PORT,	al
+	in		al,		RTC_RW_PORT
+	call	bcd_to_number
+	retn
+
+rtc_get_min_bin:
+;out: al = minutes from CMOS
+	mov		al,		RTC_MINUTE
+	jmp		rtc_get_info_bin
+
+rtc_get_hour_bin:
+;out: al = hour from CMOS
+	mov		al,		RTC_HOUR
+	jmp		rtc_get_info_bin
+
+rtc_get_week_bin:
+;out: al = week from CMOS
+	mov		al,		RTC_WEEK
+	jmp		rtc_get_info_bin
+
+rtc_get_day_bin:
+;out: al = day from CMOS
+	mov		al,		RTC_DAY
+	jmp		rtc_get_info_bin
+
+rtc_get_month_bin:
+;out: al = month from CMOS
+	mov		al,		RTC_MONTH
+	jmp		rtc_get_info_bin
+
+rtc_get_year_bin:
+;out: al = year from CMOS
+	mov		al,		RTC_YEAR
+	jmp		rtc_get_info_bin
+
+rtc_get_century_bin:
+;out: al = century from CMOS
+	mov		al,		108
+	out		RTC_SELECT_PORT,	al
+
+	in		al,		RTC_RW_PORT
+	test	al,		al
+	jne		.if_have_field
+	cmp		al,		0x90
+	jl		.if_less
+	mov		al,		20
+	retn
+.if_less:
+	mov		al,		0x90
+	retn
+.if_have_field:
+	jmp		rtc_get_info_bin
