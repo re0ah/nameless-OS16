@@ -64,7 +64,9 @@ uint_to_ascii:
 	test	ax,		ax
 	jne		.lp
 .end_lp:
-	lea		cx,		[ds:di - num_to_ascii_buf] ;calc len of str
+;	lea		cx,		[ds:di - num_to_ascii_buf] ;calc len of str
+	mov		cx,		di
+	sub		cx,		num_to_ascii_buf
 .lp2:	;invert copy from di to si
 	dec		di
 	mov		al,		byte[ds:di]
@@ -172,13 +174,13 @@ scancode_to_ascii:
 ;in:  al = scancode
 ;out: al = 0 if char not printable, else ascii
 ;	  bx = al
-	mov		bl,		byte[ds:kb_shift_pressed]
+	mov		bl,		byte[kb_shift_pressed]
 	test	bl,		bl
 	je		.if_shift_not_pressed
 	cmp		al,		0x53
 	ja		.not_printable
 	movzx	bx,		al
-	mov		al,		byte[ds:bx + SCANCODE_SET_WITH_SHIFT]
+	mov		al,		byte[bx + SCANCODE_SET_WITH_SHIFT]
 	call	if_caps
 	jcxz	.caps_not_set
 	jmp		caps_to_char
@@ -186,7 +188,7 @@ scancode_to_ascii:
 	cmp		al,		0x53
 	ja		.not_printable
 	movzx	bx,		al
-	mov		al,		byte[ds:bx + SCANCODE_SET]
+	mov		al,		byte[bx + SCANCODE_SET]
 	call	if_caps
 	jcxz	.caps_not_set
 	jmp		char_to_caps

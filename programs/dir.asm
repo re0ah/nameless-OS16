@@ -75,6 +75,7 @@ dir:
 	stosb	;byte[es:di] = al
 ;fsize
 	mov		ax,		word[ds:bx + FAT12_FILE_SIZE_POS]
+	push	ax
 	call	to_num
 	sub		di,		cx
 	mov		ax,		cx
@@ -82,50 +83,59 @@ dir:
 	sub		cx,		ax
 	mov		al,		' '
 	rep		stosb
-	mov		ax,		word[ds:bx + FAT12_FILE_SIZE_POS]
+	pop		ax
 	call	to_num
 ;2 space
 	mov		ax,		0x2020
 	stosw	;word[es:di] = ax
 ;year
 	mov		ax,		word[ds:bx + FAT12_DATE_POS]
+	push	ax
 	shr		ax,		9
 	add		ax,		1980	;DOS timestamp
 	call	to_num
 	mov		al,		'-'
 	stosb	;byte[es:di] = al
 ;month
-	mov		ax,		word[ds:bx + FAT12_DATE_POS]
+	pop		ax
+	push	ax
 	and		ax,		0x01FF
 	shr		ax,		5
+	call	if_less_then_ten
 	call	to_num
 	mov		al,		'-'
 	stosb	;byte[es:di] = al
 ;day
-	mov		ax,		word[ds:bx + FAT12_DATE_POS]
+	pop		ax
 	and		ax,		0x001F
+	call	if_less_then_ten
 	call	to_num
 ;space
 	mov		ax,		0x2020
 	stosw	;word[es:di] = ax
 ;hour
 	mov		ax,		word[ds:bx + FAT12_TIME_POS]
+	push	ax
 	shr		ax,		11
+	call	if_less_then_ten
 	call	to_num
 ;delim
 	mov		al,		':'
 	stosb	;byte[es:di] = al
 ;minute
-	mov		ax,		word[ds:bx + FAT12_TIME_POS]
+	pop		ax
+	push	ax
 	shl		ax,		5
 	shr		ax,		10
+	call	if_less_then_ten
 	call	to_num
 ;delim
 	mov		al,		':'
 	stosb	;byte[es:di] = al
 ;seconds
-	mov		ax,		word[ds:bx + FAT12_TIME_POS]
-	shr		ax,		0x001F
+	pop		ax
+	and		ax,		0x001F
+	call	if_less_then_ten
 	call	to_num
 .inc_cmp:
 	add		bx,		DIR_ENTRY_SIZE
@@ -147,6 +157,18 @@ dir:
 
 	xor		ax,		ax	;exit status
 	retf
+
+if_less_then_ten:
+;in: ax = uint
+	cmp		ax,		10
+	jge		.not_less_ten_h
+.less_ten_h:
+	push	ax
+	mov		al,		'0'
+	stosb
+	pop		ax
+.not_less_ten_h:
+	retn
 
 to_num:
 ;in:  ax = uint 

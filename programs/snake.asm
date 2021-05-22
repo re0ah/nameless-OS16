@@ -46,9 +46,11 @@ SNAKE_TO_RIGHT	equ VGA_CHAR_SIZE
 
 snake:
 .init:
-	mov		al,		0x01 ;set video mode, 40x25
-						 ;why this mode? In them symbols are square, x=y
-	mov		bx,		SYSCALL_VGA_SET_VIDEO_MODE
+;set video mode
+	mov		ax,		0x0001 ;set video mode, 40x25
+						   ;why this mode? In them symbols are square, x=y
+	int		0x10
+
 	int		0x20
 	mov		bx,		SYSCALL_VGA_CURSOR_DISABLE
 	int		0x20
@@ -108,9 +110,11 @@ snake:
 .exit:
 	mov		bx,		SYSCALL_VGA_CURSOR_ENABLE
 	int		0x20
-	mov		al,		0x03
-	mov		bx,		SYSCALL_VGA_SET_VIDEO_MODE
-	int		0x20
+
+;set back video mode
+	mov		ax,		0x0003
+	int		0x10
+
 	xor		ax,		ax	;exit status
 	retf
 
@@ -223,6 +227,7 @@ keyboard_routine:
 	int		0x20
 	test	al,		al
 	je		.end
+
 	cmp		al,		0x01 ;ESC
 	je		.pause
 	cmp		al,		0x20 ;scancode D

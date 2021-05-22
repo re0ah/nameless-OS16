@@ -33,6 +33,9 @@ IVT_ADDR_PIT_SEGMENT	  equ 0x0022
 IVT_ADDR_KEYBOARD_FUNC	  equ 0x0024
 IVT_ADDR_KEYBOARD_SEGMENT equ 0x0026
 
+IVT_ADDR_COM1_FUNC		  equ 0x0030
+IVT_ADDR_COM1_SEGMENT	  equ 0x0032
+
 IVT_ADDR_SYSCALL_FUNC	  equ 0x0080 ;int 0x20 
 IVT_ADDR_SYSCALL_SEGMENT  equ 0x0082
 load_isr:
@@ -49,6 +52,8 @@ load_isr:
 	mov		word[gs:IVT_ADDR_PIT_SEGMENT],		ax
 	mov		word[gs:IVT_ADDR_KEYBOARD_FUNC],	keyboard_int
 	mov		word[gs:IVT_ADDR_KEYBOARD_SEGMENT],	ax
+	mov		word[gs:IVT_ADDR_COM1_FUNC],		com1_int
+	mov		word[gs:IVT_ADDR_COM1_SEGMENT],		ax
 	mov		word[gs:IVT_ADDR_SYSCALL_FUNC],		syscall
 	mov		word[gs:IVT_ADDR_SYSCALL_SEGMENT],	ax
 	sti
@@ -66,8 +71,8 @@ save_interrupts:
 	push	ds
 
 ;es = ds (KERNEL_SEGMENT)
-	mov		ax,		ds
-	mov		es,		ax
+	push	ds
+	pop		es
 ;ds = ISR_SEGMENT
 	xor		ax,		ax	;ISR segment
 	mov		ds,		ax
@@ -129,59 +134,58 @@ restore_interrupts:
 syscall:
 ;in:  bx = number of syscall
 ;out: depending on syscall
+	push	ds
 	push	gs
-	push	bx
 ;gs = KERNEL_SEGMENT
-	mov		bx,		KERNEL_SEGMENT
-	mov		gs,		bx	;throught gs segment get address from table
-	pop		bx
+	push	KERNEL_SEGMENT
+	pop		gs		;throught gs segment get address from table
 ;getting address of function
 	mov		bx,		word[gs:bx + .jump_table]
 	pop		gs
 	call	bx
+	pop		ds
 	iret
 .jump_table:
 	dw		_interrupt_vga_clear_screen		;#0
 	dw		vga_cursor_disable				;#1
 	dw		vga_cursor_enable				;#2
 	dw		_interrupt_vga_cursor_move		;#3
-	dw		vga_set_video_mode				;#4
-	dw		_interrupt_tty_putchar_ascii	;#5
-	dw		_interrupt_tty_print_ascii		;#6
-	dw		_interrupt_tty_print_ascii_c	;#7
-	dw		_interrupt_tty_next_row			;#8
-	dw		fat12_read_root					;#9
-	dw		fat12_find_entry				;#10
-	dw		fat12_load_entry				;#11
-	dw		fat12_file_size					;#12
-	dw		fat12_file_entry_size			;#13
-	dw		_interrupt_pit_set_frequency	;#14
-	dw		_interrupt_pit_get_frequency	;#15
-	dw		_interrupt_get_keyboard_input	;#16
-	dw		_interrupt_scancode_to_ascii	;#17
-	dw		_interrupt_int_to_ascii			;#18
-	dw		_interrupt_uint_to_ascii		;#19
-	dw		_interrupt_set_pit_int			;#20
-	dw		_interrupt_set_keyboard_int		;#21
-	dw		_interrupt_rand_int				;#22
-	dw		_interrupt_set_rand_seed		;#23
-	dw		rtc_get_sec						;#24
-	dw		rtc_get_min						;#25
-	dw		rtc_get_hour					;#26
-	dw		rtc_get_day						;#27
-	dw		rtc_get_month					;#28
-	dw		rtc_get_year					;#29
-	dw		rtc_get_century					;#30
-	dw		rtc_get_week					;#31
-	dw		rtc_get_ascii_sec				;#32
-	dw		rtc_get_ascii_min				;#33
-	dw		rtc_get_ascii_hour				;#34
-	dw		rtc_get_ascii_day				;#35
-	dw		rtc_get_ascii_month				;#36
-	dw		rtc_get_ascii_year				;#37
-	dw		rtc_get_ascii_century			;#38
-	dw		rtc_get_ascii_week				;#39
-	dw		_interrupt_execve				;#40
+	dw		_interrupt_tty_putchar_ascii	;#4
+	dw		_interrupt_tty_print_ascii		;#5
+	dw		_interrupt_tty_print_ascii_c	;#6
+	dw		_interrupt_tty_next_row			;#7
+	dw		fat12_read_root					;#8
+	dw		fat12_find_entry				;#9
+	dw		fat12_load_entry				;#10
+	dw		fat12_file_size					;#11
+	dw		fat12_file_entry_size			;#12
+	dw		_interrupt_pit_set_frequency	;#13
+	dw		_interrupt_pit_get_frequency	;#14
+	dw		_interrupt_get_keyboard_input	;#15
+	dw		_interrupt_scancode_to_ascii	;#16
+	dw		_interrupt_int_to_ascii			;#17
+	dw		_interrupt_uint_to_ascii		;#18
+	dw		_interrupt_set_pit_int			;#19
+	dw		_interrupt_set_keyboard_int		;#20
+	dw		_interrupt_rand_int				;#21
+	dw		_interrupt_set_rand_seed		;#22
+	dw		rtc_get_sec						;#23
+	dw		rtc_get_min						;#24
+	dw		rtc_get_hour					;#25
+	dw		rtc_get_day						;#26
+	dw		rtc_get_month					;#27
+	dw		rtc_get_year					;#28
+	dw		rtc_get_century					;#29
+	dw		rtc_get_week					;#30
+	dw		rtc_get_ascii_sec				;#31
+	dw		rtc_get_ascii_min				;#32
+	dw		rtc_get_ascii_hour				;#33
+	dw		rtc_get_ascii_day				;#34
+	dw		rtc_get_ascii_month				;#35
+	dw		rtc_get_ascii_year				;#36
+	dw		rtc_get_ascii_century			;#37
+	dw		rtc_get_ascii_week				;#38
+	dw		_interrupt_execve				;#39
 
 _interrupt_vga_clear_screen:
 ;in: 
@@ -191,33 +195,27 @@ _interrupt_vga_clear_screen:
 ;     cx = 0
 ;	  bx = 0
 ;	  dx = 0x03D5
-	push	ds
-	mov		bx,		KERNEL_SEGMENT
-	mov		ds,		bx
-	call	vga_clear_screen
+	push	KERNEL_SEGMENT
 	pop		ds
+	call	vga_clear_screen
 	retn
 
 _interrupt_pit_set_frequency:
 ;in:  ax = frequency
 ;out: al = ah
 ;	  bx = KERNEL_SEGMENT
-	push	ds
-	mov		bx,		KERNEL_SEGMENT
-	mov		ds,		bx
-	call	pit_set_frequency
+	push	KERNEL_SEGMENT
 	pop		ds
+	call	pit_set_frequency
 	retn
 
 _interrupt_pit_get_frequency:
 ;in:
 ;out: ax = word[pit_frequency]
 ;	  bx = KERNEL_SEGMENT
-	push	ds
-	mov		bx,		KERNEL_SEGMENT
-	mov		ds,		bx
-	mov		ax,		word[ds:pit_frequency]
+	push	KERNEL_SEGMENT
 	pop		ds
+	mov		ax,		word[pit_frequency]
 	retn
 
 _interrupt_vga_cursor_move:
@@ -225,12 +223,10 @@ _interrupt_vga_cursor_move:
 ;out: bx = word[vga_pos_cursor] / 2
 ;     dx = 0x03D5
 ;     al = bh
-	push	ds
-	mov		ax,		KERNEL_SEGMENT
-	mov		ds,		ax
-	mov		word[ds:vga_pos_cursor],	cx
-	call	vga_cursor_move
+	push	KERNEL_SEGMENT
 	pop		ds
+	mov		word[vga_pos_cursor],	cx
+	call	vga_cursor_move
 	retn
 
 _interrupt_tty_putchar_ascii:
@@ -252,13 +248,13 @@ _interrupt_tty_putchar_ascii:
 	push	ds
 	cmp		al,		0x0A ;'\n'
 	je		.new_line
-	mov		bx,		KERNEL_SEGMENT
-	mov		ds,		bx
-	mov		ah,		byte[ds:vga_color] ;ax vga_char now
-	mov		bx,		word[ds:vga_pos_cursor]
+	push	KERNEL_SEGMENT
+	pop		ds
+	mov		ah,		byte[vga_color] ;ax vga_char now
+	mov		bx,		word[vga_pos_cursor]
 	mov		word[es:bx],	ax
 	add		bx,		VGA_CHAR_SIZE
-	mov		word[ds:vga_pos_cursor], bx
+	mov		word[vga_pos_cursor], bx
 	call	vga_cursor_move.without_get_pos_cursor_with_div
 	pop		ds
 .end:
@@ -317,33 +313,27 @@ _interrupt_tty_next_row:
 ;     bx = word[vga_pos_cursor] / 2
 ;     dx = 0x03D5
 ;need calc the row now, inc and mul to 80 * VGA_CHAR_SIZE
-	push	ds
-	mov		ax,		KERNEL_SEGMENT
-	mov		ds,		ax
-	call	tty_next_row
+	push	KERNEL_SEGMENT
 	pop		ds
+	call	tty_next_row
 	retn
 
 KB_EMPTY equ 0x00	;this scancode don't used in XT set
 _interrupt_get_keyboard_input:
 ;in:
 ;out: al = 0 if buffer empty, else scancode
-	push	ds
-	mov		bx,		KERNEL_SEGMENT
-	mov		ds,		bx
-	call	pop_kb_buf
+	push	KERNEL_SEGMENT
 	pop		ds
+	call	pop_kb_buf
 	retn
 
 _interrupt_scancode_to_ascii:
 ;in:  al = scancode
 ;out: al = 0 if char not printable, else ascii
 ;	  bx = al
-	push	ds
-	mov		bx,		KERNEL_SEGMENT
-	mov		ds,		bx
-	call	scancode_to_ascii
+	push	KERNEL_SEGMENT
 	pop		ds
+	call	scancode_to_ascii
 	retn
 
 _interrupt_int_to_ascii:
@@ -354,11 +344,9 @@ _interrupt_int_to_ascii:
 ;	  di = num_to_ascii_buffer
 ;	  al = high char in str
 ;	  dx = high sign in int
-	push	ds
-	mov		bx,		KERNEL_SEGMENT
-	mov		ds,		bx
-	call	int_to_ascii
+	push	KERNEL_SEGMENT
 	pop		ds
+	call	int_to_ascii
 	retn
 
 _interrupt_uint_to_ascii:
@@ -370,8 +358,8 @@ _interrupt_uint_to_ascii:
 ;	  al = high char in str
 ;	  dx = high sign in uint
 	push	gs
-	mov		bx,		KERNEL_SEGMENT
-	mov		gs,		bx
+	push	KERNEL_SEGMENT
+	pop		gs
 
 	mov		di,		num_to_ascii_buf
 	mov		cx,		10		;divisor
@@ -385,7 +373,9 @@ _interrupt_uint_to_ascii:
 	test	ax,		ax
 	jne		.lp
 .end_lp:
-	lea		cx,		[di - num_to_ascii_buf] ;calc len of str
+;	lea		cx,		[di - num_to_ascii_buf] ;calc len of str
+	mov		cx,		di
+	sub		cx,		num_to_ascii_buf
 .lp2:	;invert copy from di to si
 	dec		di
 	mov		al,		byte[gs:di]
@@ -425,22 +415,18 @@ _interrupt_rand_int:
 ;out: ax = pseudo random number
 ;	  dx = ???
 ;	  bx = KERNEL_SEGMENT
-	push	ds
-	mov		bx,		KERNEL_SEGMENT
-	mov		ds,		bx
-	call	rand_int
+	push	KERNEL_SEGMENT
 	pop		ds
+	call	rand_int
 	retn
 
 _interrupt_set_rand_seed:
 ;in:  ax = seed
 ;out: ax = seed
 ;	  bx = KERNEL_SEGMENT
-	push	ds
-	mov		bx,		KERNEL_SEGMENT
-	mov		ds,		bx
-	call	set_rand_seed
+	push	KERNEL_SEGMENT
 	pop		ds
+	call	set_rand_seed
 	retn
 
 _interrupt_execve:
@@ -453,8 +439,8 @@ _interrupt_execve:
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
 	je		.not_found
 	push	es
-	mov		si,		PROCESS_SEGMENT
-	mov		es,		si
+	push	PROCESS_SEGMENT
+	pop		es
 	xor		si,		si
 	call	fat12_load_entry
 	pop		es

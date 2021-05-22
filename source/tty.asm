@@ -24,12 +24,11 @@
 ;For more information, please refer to <http://unlicense.org/>
 
 bits 16
-%include "kernel.inc"
 tty_start:
 ;set vga buffer, segment es since he is pair with
 ;di, and it allow easy write data to VRAM
-	mov		ax,		VGA_BUFFER
-	mov		es,		ax
+	push	VGA_BUFFER
+	pop		es
 ;	mov		byte[vga_color], 0x07 ;bg: black, fg: gray
 
 	call	vga_clear_screen
@@ -81,11 +80,11 @@ tty_putchar_ascii:
 	je		.end
 	cmp		al,		0x0A	;'\n'
 	je		tty_next_row
-	mov		ah,		byte[ds:vga_color]		;ax vga_char now
-	mov		bx,		word[ds:vga_pos_cursor]
+	mov		ah,		byte[vga_color]		;ax vga_char now
+	mov		bx,		word[vga_pos_cursor]
 	mov		word[es:bx],	ax			;print in video buffer
 	add		bx,		VGA_CHAR_SIZE
-	mov		word[ds:vga_pos_cursor], bx
+	mov		word[vga_pos_cursor], bx
 	jmp		vga_cursor_move.without_get_pos_cursor_with_div
 .end:
 	retn
@@ -140,8 +139,8 @@ tty_next_row:
 ;	  bx = word[vga_pos_cursor] / 2
 ;	  dx = 0x03D5
 ;need calc the row now, inc and mul to 80 * VGA_CHAR_SIZE
-	mov		ax,		word[ds:vga_pos_cursor]
-	div		byte[ds:.div_value]
+	mov		ax,		word[vga_pos_cursor]
+	div		byte[.div_value]
 	xor		ah,		ah
 
 	inc		ax
@@ -153,8 +152,8 @@ tty_next_row:
 	shl		ax,		2
 	add		ax,		bx
 
-	mov		word[ds:vga_pos_cursor],	ax
-	mov		word[ds:tty_input_start],	ax
+	mov		word[vga_pos_cursor],	ax
+	mov		word[tty_input_start],	ax
 
 	mov		bx,		ax
 	jmp		vga_cursor_move.without_get_pos_cursor
@@ -167,9 +166,9 @@ get_tty_input_ascii:
 ;	  cx = str len
 ;	  al = 0
 ;save ascii input from VRAM to ss:di
-	mov		si,		word[ds:tty_input_start]
+	mov		si,		word[tty_input_start]
 .without_get_tty_input_start:
-	mov		cx,		word[ds:vga_pos_cursor]
+	mov		cx,		word[vga_pos_cursor]
 .without_both:
 	xor		bp,		bp		;word[argv_ptr]
 .copy:
@@ -182,7 +181,7 @@ get_tty_input_ascii:
 	test	bp,		bp
 	jne		.already_set
 	mov		bp,		di
-	mov		word[ds:argv_ptr], di
+	mov		word[argv_ptr], di
 .already_set:
 .not_space:
 	cmp		si,		cx
@@ -193,8 +192,8 @@ get_tty_input_ascii:
 	retn
 
 tty_push_enter:
-	mov		ax,		word[ds:tty_input_start]
-	mov		cx,		word[ds:vga_pos_cursor]
+	mov		ax,		word[tty_input_start]
+	mov		cx,		word[vga_pos_cursor]
 	cmp		ax,		cx
 	je		.exit	;if has not input
 ;calc len of input
@@ -246,7 +245,7 @@ tty_push_enter:
 	add		sp,		dx
 	add		sp,		6
 
-	mov		ax,		word[ds:last_exit_status]
+	mov		ax,		word[last_exit_status]
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
 	je		.not_found
 ;	test	ax,		ax
@@ -270,16 +269,16 @@ tty_push_backspace:
 ;	  cx = (num_of_row + 1) * 80
 ;	  dx = 0x03D5
 ;if start of input equal current position cursor then don't moving cursor
-	mov		ax,		word[ds:tty_input_start]
-	mov		bx,		word[ds:vga_pos_cursor]
+	mov		ax,		word[tty_input_start]
+	mov		bx,		word[vga_pos_cursor]
 	cmp		ax,		bx
 	je		.exit
 ;shifting pos cursor on 1 char and fill these position with space
 	sub		bx,		VGA_CHAR_SIZE
 	mov		al,		' '
-	mov		ah,		byte[ds:vga_color]
+	mov		ah,		byte[vga_color]
 	mov		word[es:bx],	ax
-	mov		word[ds:vga_pos_cursor],	bx
+	mov		word[vga_pos_cursor],	bx
 	jmp		vga_cursor_move.without_get_pos_cursor_with_div
 .exit:
 	retn
@@ -296,10 +295,10 @@ tty_print_path:
 	mov		cx,		5
 	call	tty_print_ascii
 	mov		cx,		10
-	add		word[ds:tty_input_start], cx
+	add		word[tty_input_start], cx
 	retn
 
-HELLO_MSG db "namelessOS16 v 6", 0x0A, 0x00
+HELLO_MSG db "namelessOS16 v 7", 0x0A, 0x00
 	HELLO_MSG_SIZE equ $-HELLO_MSG
 
 PROGRAM_NOT_FOUND db 0x0A, "program not found", 0x00

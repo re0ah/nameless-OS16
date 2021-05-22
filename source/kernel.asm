@@ -54,17 +54,15 @@ bits 16
 ISR_SEGMENT	  equ 0x0000
 KERNEL_SEGMENT equ 0x0050 ;IVT_SIZE + BIOS_DATA = 0x500 bytes, with considering
 						  ;4 bits shift right segment for make address kernel
-						  ;will be placed behind bios dat
-;PROCESS_SEGMENT equ KERNEL_SEGMENT + ((KERNEL_SIZE + 1) / 16)
-		;error: division operator may only be applied to scalar values
-PROCESS_SEGMENT equ 0x1200
+						  ;will be placed behind bios data
+PROCESS_SEGMENT equ (KERNEL_SIZE_WITH_BUFFER / 16) + KERNEL_SEGMENT + 1
 DISK_BUFFER	equ 0x6000
 STACK_SEGMENT equ 0x8000
 
 kernel:
 ;init stack segment & stack pointer
-	mov		ax,		STACK_SEGMENT
-	mov		ss,		ax
+	push	STACK_SEGMENT
+	pop		ss
 	mov		sp,		0xFFFF
 	call	load_isr
 ;init data segment
@@ -72,12 +70,18 @@ kernel:
 ;	mov		ax,		KERNEL_SEGMENT
 	mov		ds,		ax
 	call	serial_init
+	mov		si,		testto
+	mov		bx,		data_file
+	mov		cx,		1
+	call	fat12_write_file
 .to_tty:
 	call	tty_start
 	jmp		0xFFFF:0000 ;reboot
 
-testnamef12 db "TESTNAM SYS"
-testasqweee db "KERNEL  BIN"
+testfrom db "TESTFROMBIN"
+testto db "TESTTO  BIN"
+
+data_file db 0xCB
 
 last_exit_status dw 0
 execve:
@@ -92,25 +96,25 @@ execve:
 	call	save_interrupts ;pit & keyboard
 	push	es
 ;es = PROCESS_SEGMENT
-	mov		si,		PROCESS_SEGMENT
-	mov		es,		si
+	push	PROCESS_SEGMENT
+	pop		es
 	xor		si,		si
 	call	fat12_load_entry
 	pop		es
 ;Now, file was load. Execute him
-	mov		bp,		word[ds:argv_ptr]
-	mov		ax,		PROCESS_SEGMENT
-	mov		ds,		ax
+	mov		bp,		word[argv_ptr]
+	push	PROCESS_SEGMENT
+	pop		ds
 	call	PROCESS_SEGMENT:0x0000
 	cli
-	mov		cx,		KERNEL_SEGMENT
-	mov		ds,		cx
-	mov		word[ds:last_exit_status],	ax
+	push	KERNEL_SEGMENT
+	pop		ds
+	mov		word[last_exit_status],	ax
 	call	restore_interrupts
 	sti
 	retn
 .not_found:
-	mov		word[ds:last_exit_status],	FAT12_ENTRY_NOT_FOUND
+	mov		word[last_exit_status],	FAT12_ENTRY_NOT_FOUND
 	retn
 
 %include "vga.asm"
@@ -124,4 +128,5 @@ execve:
 %include "pit.asm"
 %include "keyboard.asm"
 
-KERNEL_SIZE equ $
+KERNEL_SIZE equ 3644
+KERNEL_SIZE_WITH_BUFFER equ KERNEL_SIZE + KB_BUF_SIZE

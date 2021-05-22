@@ -4,10 +4,7 @@
 ;
 ;Based on a free boot loader by E Dehling.
 
-bits 16
-
-jmp short start
-OEMLabel db "re0ah____"
+bits 16 ;real mode
 
 ;--------------------------DISK CONSTANTS--------------------------------------
 ;------------------------------------------------------------------------------
@@ -59,26 +56,28 @@ SIGNATURE equ 0x29
 ;------------------------------------------------------------------------------
 VOLUME_ID equ 0 ;ignore that
 
+jmp start
 ;-------------------------Disk description table-------------------------------------
 ;------------------------------DOS 4.0 EBPB------------------------------------------
-BytesPerSector:		dw BYTES_PER_SECTOR
-SectorsPerCluster:	db SECTORS_PER_CLUSTER
-ReservedForBoot:	dw SECTORS_RESERVED_FOR_BOOT 
-NumberOfFats:		db NUM_OF_FATS
-RootDirEntries:		dw NUM_OF_ENTRIES_ROOT_DIR 
-LogicalSectors:		dw NUM_OF_LOGIC_SECTORS 
-MediumByte:			db TYPE_OF_DISK
-SectorsPerFat:		dw SECTORS_PER_FAT
-SectorsPerTrack:	dw SECTORS_PER_TRACK
-Sides:				dw SIDES_AND_HEADS
-HiddenSectors:		dd NUM_HIDDEN_SECTORS
-LargeSectors:		dd NUM_LARGE_SECTORS
-DriveNo:			db DRIVE_NUMBER
-Reserved:			db 0
-Signature:			db SIGNATURE
-VolumeID:			dd VOLUME_ID
-VolumeLabel			db "lbl        "
-FileSystem			db "FAT12   "
+OEMLabel          db "re0ah____"				;offset: 0x00..0x08
+BytesPerSector	  dw BYTES_PER_SECTOR			;offset: 0x09..0x0A
+SectorsPerCluster db SECTORS_PER_CLUSTER		;offset: 0x0B
+ReservedForBoot   dw SECTORS_RESERVED_FOR_BOOT	;offset: 0x0C..0x0D
+NumberOfFats      db NUM_OF_FATS				;offset: 0x0E
+RootDirEntries    dw NUM_OF_ENTRIES_ROOT_DIR 	;offset: 0x0F..0x10
+LogicalSectors    dw NUM_OF_LOGIC_SECTORS 		;offset: 0x11..0x12
+MediumByte   	  db TYPE_OF_DISK				;offset: 0x13
+SectorsPerFat     dw SECTORS_PER_FAT			;offset: 0x14..0x15
+SectorsPerTrack   dw SECTORS_PER_TRACK			;offset: 0x16..0x17
+Sides   		  dw SIDES_AND_HEADS			;offset: 0x18..0x19
+HiddenSectors     dd NUM_HIDDEN_SECTORS			;offset: 0x1A..0x0D
+LargeSectors      dd NUM_LARGE_SECTORS			;offset: 0x1E..0x21
+DriveNo   		  db DRIVE_NUMBER				;offset: 0x22
+Reserved	   	  db 0							;offset: 0x23
+Signature   	  db SIGNATURE					;offset: 0x24
+VolumeID	   	  dd VOLUME_ID					;offset: 0x25..0x28
+VolumeLabel   	  db "lbl        "				;offset: 0x29..0x33
+FileSystem   	  db "FAT12   "					;offset: 0x34..0x3B
 ;------------------End of disk description table-------------------------------
 ;------------------------------------------------------------------------------
 KERNEL_FILENAME	db "KERNEL  BIN"
@@ -90,13 +89,16 @@ DISK_ERROR		db "Floppy error", 0
 FILE_NOT_FOUND	db "KERNEL.BIN not found", 0
 ;------------------------------------------------------------------------------
 start:
-	cli
-	mov		ax,		0x1000
+;DISK_BUFFER located at 0x09C0 segment
+;init stack (ss=0x0BC0, above 8k from DISK_BUFFER, and sp=0x0BC0 (no matter)
+	mov		ax,		0x0BC0
 	mov		ss,		ax
 	mov		sp,		ax
+;BIOS load bootloader to 0x07C0:0x0000 addr
 	mov		ax,		0x07C0
 	mov		ds,		ax
-	sti
+
+	mov		byte[BOOT_DEVICE],	dl	;BIOS passes boot device in dl, save it
 
 ;load root directory from disk
 START_OF_ROOT equ SECTORS_RESERVED_FOR_BOOT + \
@@ -227,7 +229,7 @@ next_cluster_cont:
 	jmp		load_file_sector
 
 to_kernel:
-	xor		dl,		dl	;provide to kernel the drive number
+	mov		dl,		byte[BOOT_DEVICE] ;provide to kernel the drive number
 
 	jmp		KERNEL_SEGMENT:0x0000
 
@@ -264,7 +266,7 @@ reset_floppy:
 	push	ax
 	push	dx
 	xor		ax,		ax
-	xor		dl,		dl
+	mov		dl,		byte[BOOT_DEVICE]
 	stc
 	int		0x13
 	pop		dx
@@ -299,6 +301,8 @@ l2hts:
 	xor		dl,		dl
 
 	ret
+
+BOOT_DEVICE db 0
 
 	times 510-($-$$) db 0	;pad remainder of boot sector with zeros
 	dw	0xAA55				;boot signature

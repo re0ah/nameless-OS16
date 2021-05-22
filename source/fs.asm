@@ -100,6 +100,57 @@ START_OF_ROOT equ SECTORS_RESERVED_FOR_BOOT + \
 START_USER_DATA equ START_OF_ROOT + SECTORS_TO_ROOT_DIR ;33
 ;==============================================================================
 
+;DOS 4.0 EBPB, disk description table
+MAIN_EBPB:
+	.OEM_label			 times 9 db ' '
+	.bytes_per_sector	 dw 0
+	.sectors_per_cluster db 0
+	.reserved_for_boot	 dw 0
+	.number_of_fats		 db 0
+	.root_dir_entries	 dw 0
+	.logical_sectors	 dw 0
+	.medium_byte		 db 0
+	.sectors_per_fat	 dw 0
+	.sectors_per_track	 dw 0
+	.sides				 dw 0
+	.hidden_sectors		 dd 0
+	.large_sectors		 dd 0
+	.drive_no			 db 0
+	.reserved			 db 0
+	.signature			 db 0
+	.volume_id			 dd 0
+	.volume_label		 times 11 db ' '
+	.file_system		 db "FAT12   "
+MAIN_EBPB_SIZE equ $ - MAIN_EBPB
+
+sector_size dw 512
+
+fs_init:
+;get EBPB from bootloader and save disk description table
+	push	es
+	xor		ax,		ax	;read first sector - bootloader contain info about disk
+	call	l2hts
+	mov		ax,		0x0201			;AH: BIOS function read sectors from drive
+									;AL		Sectors To Read Count
+									;CH		Cylinder
+									;CL		Sector
+									;DH		Head
+									;DL		Drive
+	push	DISK_BUFFER				;ES:BX	Buffer Address Pointer
+	pop		es
+	xor		bx,		bx
+									;Results CF Set On Error, Clear If No Error
+	int		0x13	;BIOS disk routines
+
+;need save ebpb from disk
+	mov		si,		MAIN_EBPB
+	xor		di,		di
+	mov		cx,		MAIN_EBPB_SIZE
+	rep		movsb
+
+	pop		es
+	retn
+
 fat12_read_root:
 ;read fat12 root in DISK_BUFFER
 ;in:
@@ -121,8 +172,8 @@ fat12_read_root:
 									;CL		Sector
 									;DH		Head
 									;DL		Drive
-	mov		bx,		DISK_BUFFER		;ES:BX	Buffer Address Pointer
-	mov		es,		bx
+	push	DISK_BUFFER				;ES:BX	Buffer Address Pointer
+	pop		es
 	xor		bx,		bx
 									;Results CF Set On Error, Clear If No Error
 	int		0x13
@@ -145,8 +196,8 @@ fat12_file_entry_size:
 ;out: if found:  dx:ax = file size (dx - high, ax - low)
 ;	  not found: ax = FAT12_ENTRY_NOT_FOUND
 	push	fs
-	mov		dx,		DISK_BUFFER
-	mov		fs,		dx
+	push	DISK_BUFFER
+	pop		fs
 	mov		bx,		ax
 	mov		ax,		word[fs:bx + 28]
 	mov		dx,		word[fs:bx + 30]
@@ -165,8 +216,8 @@ fat12_find_entry:
 ;				 si = bx + FAT12_FULLNAME_SIZE
 	push	es
 	call	fat12_read_root
-	mov		ax,		DISK_BUFFER
-	mov		es,		ax
+	push	DISK_BUFFER
+	pop		es
 ;on disk buffer root now, check all root before entry doesn't found
 	mov		bx,		si 
 	xor		ax,		ax ;entry counter
@@ -187,7 +238,7 @@ fat12_find_entry:
 	pop		es
 	retn
 
-read_fat:
+fat12_read_fat:
 ;in:  ds:si - name of file
 ;out: ah = return code BIOS int
 ;	  al = actual sectors read count
@@ -195,8 +246,8 @@ read_fat:
 ;	  dx = ???
 ;	  ??? I don't know what's registers change read BIOS call
 	push	es
-	mov		ax,		DISK_BUFFER
-	mov		es,		ax
+	push	DISK_BUFFER
+	pop		es
 
 	mov		ax,		0x0001	;1st sector of 1st FAT
 	call	l2hts
@@ -228,13 +279,13 @@ fat12_load_entry:
 ;	  bp = file marker of fat element
 	mov		di,		si ;store ptr where to load data
 	mov		bx,		ax ;fat12 entry ptr
-	mov		ax,		DISK_BUFFER
-	mov		gs,		ax
+	push	DISK_BUFFER
+	pop		gs
 	mov		bp,		word[gs:bx + 26] ;1st cluster (26st byte from
 										;start of entry)
 									 ;store cluster number
 	pusha
-	call	read_fat
+	call	fat12_read_fat
 	popa
 ;FAT cluster 0 = media descriptor = 0F0h
 ;FAT cluster 1 = filler cluster = 0FFh
@@ -283,8 +334,8 @@ fat12_rename_file:
 	push	si
 	call	fat12_find_entry
 	pop		si
-	mov		di,		DISK_BUFFER
-	mov		es,		di
+	push	DISK_BUFFER
+	pop		es
 	mov		di,		ax
 	pop		si
 	mov		cx,		11
@@ -304,8 +355,8 @@ fat12_create_entry:
 ;out: 
 	call	fat12_read_root
 	push	es
-	mov		ax,		DISK_BUFFER
-	mov		es,		ax
+	push	DISK_BUFFER
+	pop		es
 	xor		di,		di
 	mov		cx,		224
 .next_entry:
@@ -322,7 +373,7 @@ fat12_create_entry:
 	mov		cx,		11
 	rep		movsb		;cp fname
 
-	mov		al,		0
+	xor		al,		al
 	mov		cx,		21
 	rep		stosb
 
@@ -333,8 +384,8 @@ fat12_create_entry:
 	mov		ax,		START_OF_ROOT
 	call	l2hts
 
-	mov		bx,		DISK_BUFFER		;ES:BX	Buffer Address Pointer
-	mov		es,		bx
+	push	DISK_BUFFER
+	pop		es
 	xor		bx,		bx
 
 	mov		ax,		0x030E	;write 14 entries
@@ -413,111 +464,92 @@ reset_floppy:
 	pop		ax
 	retn
 
-os_write_file:
+fat12_write_file:
 ;in:  si = filename
 ;	  bx = data location
 ;	  cx = data size
-;out: 
-	pusha
-
-	mov		word[.filesize],	cx
+;out:
+	push	es
+	mov		word[.filename],	si
 	mov		word[.location],	bx
-	mov		word[.filename],	ax
+	mov		word[.filesize],	cx
 
-	; First, zero out the .free_clusters list from any previous execution
-	pusha
-
-;es=ds
-	push	es	;store es
+;es = ds
 	push	ds
 	pop		es
+;zeroing array
 	mov		di,		.free_clusters
 	xor		ax,		ax
 	mov		cx,		128
 	rep		stosw	;word[es:di] = ax
-	pop		es	;load es
+;es = DISK_BUFFER
+	push	DISK_BUFFER
+	pop		es
 
-	popa
-	; Next, we need to calculate now many 512 byte clusters are required
-	mov		ax,		cx
-	mov		dx,		0
-	mov		bx,		512		; Divide file size by 512 to get clusters needed
-	div		bx
-	cmp		dx,		0
-	jg		.add_a_bit			; If there's a remainder, we need another cluster
-	jmp		.carry_on
-
-.add_a_bit:
-	add		ax,		1
-.carry_on:
+;how many 512 byte clusters are needed
+	mov		ax,		word[.filesize]
+	xor		dx,		dx
+	div		word[sector_size]
+	test	dx,		dx
+	je		.aliquot
+.not_aliquot:
+	inc		ax
+.aliquot:
 	mov		word[.clusters_needed], ax
 
-	mov		ax,		word[.filename]	; Get filename back
+	call	fat12_read_fat
+	mov		si,		3		;skipping first two clusters
 
-	;call	os_create_file		; Create empty root dir entry for this file
-	jc		near .failure		; If we can't write to the media, jump out
-
-	mov		word bx, [.filesize]
-	cmp		bx, 0
-	je		near .finished
-
-	;call	disk_read_fat		; Get FAT copy into RAM
-	;mov		si, disk_buffer + 3		; And point SI at it (skipping first two clusters)
-
-	mov		bx,		2			; Current cluster counter
+	mov		bx,		2		;Current cluster counter
 	mov		cx,		word[.clusters_needed]
-	mov		dx,		0			; Offset in .free_clusters list
-
+	xor		dx,		dx			;offset in .free_clusters list
 .find_free_cluster:
-	lodsw				; Get a word
-	and ax, 0FFFh			; Mask out for even
-	jz .found_free_even		; Free entry?
+	mov		ax,		word[es:si]
+	add		si,		2
+	and		ax,		0x0FFF			; Mask out for even
+	jz		.found_free_even		; Free entry?
 
 .more_odd:
-	inc bx				; If not, bump our counter
-	dec si				; 'lodsw' moved on two chars; we only want to move on one
+	inc		bx				; If not, bump our counter
+	dec		si				; 'lodsw' moved on two chars; we only want to move on one
 
-	lodsw				; Get word
-	shr ax, 4			; Shift for odd
-	or ax, ax			; Free entry?
-	jz .found_free_odd
+	mov		ax,		word[es:si]
+	add		si,		2
+	shr		ax,		4			; Shift for odd
+	or		ax,		ax			; Free entry?
+	jz		.found_free_odd
 
 .more_even:
-	inc bx				; If not, keep going
-	jmp .find_free_cluster
-
+	inc		bx				; If not, keep going
+	jmp		.find_free_cluster
 
 .found_free_even:
-	push si
-	mov si, .free_clusters		; Store cluster
-	add si, dx
-	mov word [si], bx
-	pop si
+	push	si
+	mov		si,		.free_clusters		; Store cluster
+	add		si,		dx
+	mov		word[si],	bx
+	pop		si
 
-	dec cx				; Got all the clusters we need?
-	cmp cx, 0
-	je .finished_list
+	dec		cx				; Got all the clusters we need?
+	test	cx,		cx
+	je		.finished_list
 
-	inc dx				; Next word in our list
-	inc dx
-	jmp .more_odd
+	add		dx,		2
+	jmp		.more_odd
 
 .found_free_odd:
-	push si
-	mov si, .free_clusters		; Store cluster
-	add si, dx
-	mov word [si], bx
-	pop si
+	push	si
+	mov		si,		.free_clusters		; Store cluster
+	add		si,		dx
+	mov		word[si],	bx
+	pop		si
 
-	dec cx
-	cmp cx, 0
-	je .finished_list
+	dec		cx
+	test	cx,		cx
+	je		.finished_list
 
-	inc dx				; Next word in our list
-	inc dx
-	jmp .more_even
-
-
+	add		dx,		2
+	jmp		.more_even
 
 .finished_list:
 
@@ -525,166 +557,157 @@ os_write_file:
 	; that correspond to free clusters on the disk; the next job is to
 	; create a cluster chain in the FAT for our file
 
-	mov cx, 0			; .free_clusters offset counter
-	mov word [.count], 1		; General cluster counter
-
+	xor		cx,		cx			; .free_clusters offset counter
+	mov		word[.count],	1		; General cluster counter
 .chain_loop:
-	mov word ax, [.count]		; Is this the last cluster?
-	cmp word ax, [.clusters_needed]
-	je .last_cluster
+	mov		ax,		word[.count]		; Is this the last cluster?
+	cmp		ax,		word[.clusters_needed]
+	je		.last_cluster
 
-	mov di, .free_clusters
+	mov		di,		.free_clusters
 
-	add di, cx
-	mov word bx, [di]		; Get cluster
+	add		di,		cx
+	mov		bx,		word[di]		; Get cluster
 
-	mov ax, bx			; Find out if it's an odd or even cluster
-	mov dx, 0
-	mov bx, 3
-	mul bx
-	mov bx, 2
-	div bx				; DX = [.cluster] mod 2
+	mov		ax,		bx			; Find out if it's an odd or even cluster
+	xor		dx,		dx
+	mov		bx,		3
+	mul		bx
+	mov		bx,		2
+	div		bx				; DX = [.cluster] mod 2
 	;mov si, disk_buffer
-	add si, ax			; AX = word in FAT for the 12 bit entry
-	mov ax, word [ds:si]
+	mov		si,		ax			; AX = word in FAT for the 12 bit entry
+	mov		ax,		word[es:si]
 
-	or dx, dx			; If DX = 0, [.cluster] = even; if DX = 1 then odd
-	jz .even
+	or		dx,		dx			; If DX = 0, [.cluster] = even; if DX = 1 then odd
+	jz		.even
 
 .odd:
-	and ax, 000Fh			; Zero out bits we want to use
-	mov di, .free_clusters
-	add di, cx			; Get offset in .free_clusters
-	mov word bx, [di+2]		; Get number of NEXT cluster
-	shl bx, 4			; And convert it into right format for FAT
-	add ax, bx
+	and		ax,		0x000F			; Zero out bits we want to use
+	mov		di,		.free_clusters
+	add		di,		cx			; Get offset in .free_clusters
+	mov		bx, 	word[di + 2]		; Get number of NEXT cluster
+	shl		bx,		4			; And convert it into right format for FAT
+	add		ax,		bx
 
-	mov word [ds:si], ax		; Store cluster data back in FAT copy in RAM
+	mov		word[es:si],	ax		; Store cluster data back in FAT copy in RAM
 
-	inc word [.count]
-	inc cx				; Move on a word in .free_clusters
-	inc cx
+	inc		word[.count]
+	add		cx,		2
 
-	jmp .chain_loop
-
+	jmp		.chain_loop
 .even:
-	and ax, 0F000h			; Zero out bits we want to use
-	mov di, .free_clusters
-	add di, cx			; Get offset in .free_clusters
-	mov word bx, [di+2]		; Get number of NEXT free cluster
+	and		ax,		0xF000			; Zero out bits we want to use
+	mov		di,		.free_clusters
+	add		di,		cx			; Get offset in .free_clusters
+	mov		bx,		word[di + 2]		; Get number of NEXT free cluster
 
-	add ax, bx
+	add		ax,		bx
 
-	mov word [ds:si], ax		; Store cluster data back in FAT copy in RAM
+	mov		word[es:si], ax		; Store cluster data back in FAT copy in RAM
 
-	inc word [.count]
-	inc cx				; Move on a word in .free_clusters
-	inc cx
+	inc		word[.count]
+	add		cx,		2
 
-	jmp .chain_loop
-
-
+	jmp		.chain_loop
 
 .last_cluster:
-	mov di, .free_clusters
-	add di, cx
-	mov word bx, [di]		; Get cluster
+	mov		di,		.free_clusters
+	add		di,		cx
+	mov		bx,		word[di]		; Get cluster
 
-	mov ax, bx
+	mov		ax,		bx
 
-	mov dx, 0
-	mov bx, 3
-	mul bx
-	mov bx, 2
-	div bx				; DX = [.cluster] mod 2
+	xor		dx,		dx
+	mov		bx,		3
+	mul		bx
+	mov		bx,		2
+	div		bx				; DX = [.cluster] mod 2
 	;mov si, disk_buffer
-	add si, ax			; AX = word in FAT for the 12 bit entry
-	mov ax, word [ds:si]
+	mov		si,		ax			; AX = word in FAT for the 12 bit entry
+	mov		ax,		word[es:si]
 
-	or dx, dx			; If DX = 0, [.cluster] = even; if DX = 1 then odd
-	jz .even_last
+	or		dx,		dx			; If DX = 0, [.cluster] = even; if DX = 1 then odd
+	jz		.even_last
 
 .odd_last:
-	and ax, 000Fh			; Set relevant parts to FF8h (last cluster in file)
-	add ax, 0FF80h
-	jmp .finito
+	and		ax,		0x000F			; Set relevant parts to FF8h (last cluster in file)
+	add		ax,		0xFF80
+	jmp		.finito
 
 .even_last:
-	and ax, 0F000h			; Same as above, but for an even cluster
-	add ax, 0FF8h
-
-
+	and		ax,		0xF000			; Same as above, but for an even cluster
+	add		ax,		0x0FF8
 .finito:
-	mov word [ds:si], ax
+	mov		word[es:si],	ax
 
-	;call disk_write_fat		; Save our FAT back to disk
+	pusha
+	mov		ax,		1			; FAT starts at logical sector 1 (after boot sector)
+	call	l2hts
 
+	xor		bx,		bx
+
+	mov		ah,		3			; Params for int 13h: write floppy sectors
+	mov		al,		9			; And write 9 of them for first FAT
+
+	int		0x13		; Write sectors
+	popa				; And restore from start of system call
 
 	; Now it's time to save the sectors to disk!
 
-	mov cx, 0
+	xor		cx,		cx
 
 .save_loop:
-	mov di, .free_clusters
-	add di, cx
-	mov word ax, [di]
+	mov		di,		.free_clusters
+	add		di,		cx
+	mov		ax,		word[di]
 
-	cmp ax, 0
+	cmp		ax,		0
 	je near .write_root_entry
 
 	pusha
+	add		ax,		31
 
-	add ax, 31
+	call	l2hts
 
-	;call disk_convert_l2hts
+	mov		bx,		word[.location]
 
-	mov word bx, [.location]
-
-	mov ah, 3
-	mov al, 1
-	stc
-	int 13h
-
+	mov		ah,		3
+	mov		al,		1
+	int		0x13
 	popa
 
-	add word [.location], 512
-	inc cx
-	inc cx
-	jmp .save_loop
-
+	add		word[.location], 512
+	add		cx,		2
+	jmp		.save_loop
 
 .write_root_entry:
 
 	; Now it's time to head back to the root directory, find our
 	; entry and update it with the cluster in use and file size
+	
+	mov		si,		word[.filename]
+	call	fat12_create_entry
 
-	;call disk_read_root_dir
+	mov		ax,		word[.free_clusters]	;get first free cluster
 
-	mov word ax, [.filename]
-	;call disk_get_root_entry
+	mov		word[es:di + 26],	ax		;cluster location
 
-	mov word ax, [.free_clusters]	; Get first free cluster
+	mov		cx,		word[.filesize]
+	mov		word[es:di + 28],	cx	;filesize
+	mov		word[es:di + 30],	0	;filesize
 
-	mov word [di+26], ax		; Save cluster location into root dir entry
+	mov		ax,		19		;start of root dir sector
+	call	l2hts
 
-	mov word cx, [.filesize]
-	mov word [di+28], cx
+	xor		bx,		bx		;from es:bx reading
 
-	mov byte [di+30], 0		; File size
-	mov byte [di+31], 0
+	mov		ax,		0x030E	;write 14 sectors
 
-	;call disk_write_root_dir
+	int		0x13
 
-.finished:
-	popa
-	clc
-	ret
-
-.failure:
-	popa
-	stc				; Couldn't write!
-	ret
-
+	pop		es
+	retn
 
 	.filesize	dw 0
 	.cluster	dw 0

@@ -25,7 +25,7 @@
 %include "../source/syscall.inc"
 
 date:
-;print date now in format YEAR-MONTH_DAY HOUR:MIN:SEC
+;print date now in format YEAR-MONTH-DAY HOUR:MIN:SEC
 ;date get from RTC
 	mov		si,		print_date_buf_end - 3
 	mov		bx,		SYSCALL_RTC_GET_ASCII_SEC - 2
@@ -36,11 +36,12 @@ date:
 	int		0x20
 	pop		bx
 	sub		si,		3
-	cmp		bx,		SYSCALL_RTC_GET_ASCII_CENTURY - 2
+	cmp		bx,		SYSCALL_RTC_GET_ASCII_YEAR
 	jne		.lp
-	inc		si
+	inc		si		;pos on 'y'
+	mov		bx,		SYSCALL_RTC_GET_ASCII_CENTURY
 	int		0x20
-	dec		si
+	dec		si		;pos on '\n'
 	
 	mov		bx,		SYSCALL_TTY_PRINT_ASCII_C
 	int		0x20

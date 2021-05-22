@@ -55,6 +55,10 @@ IRQ_COM2 equ 0x03
 IRQ_COM3 equ 0x04
 IRQ_COM4 equ 0x03
 
+PICM	equ	0x20	;master PIC port
+PICS	equ	0xA0	;slave PIC  port
+PIC_EOI	equ	0x20	;end of interrupt code
+
 serial_init:
 ;in:  
 ;out: al = 0x0B
@@ -135,3 +139,26 @@ write_serial:
 	mov		dx,		COM1_PORT + COM_THR
 	out		dx,		al
 	retn
+
+com1_int:
+;for this interruption need buffer where will be stored received data.
+;	in case of overflow data will be lost. In future, maybe, data will be saved
+;in disk
+	mov		bx,		word[.buffer_pos]
+	cmp		bx,		COM1_BUFFER_SIZE
+	je		.buffer_overflow
+
+	mov		dx,		COM1_PORT + COM_RBR
+	in		al,		dx
+
+	mov		byte[COM1_BUFFER + bx],	al
+	inc		bx
+	mov		word[.buffer_pos],	bx
+.buffer_overflow:
+	mov		al,		PICM	;master PIC
+	out		PIC_EOI,	al
+	iret
+;.buffer times 512 db 0
+COM1_BUFFER equ KERNEL_SIZE + KB_BUF_SIZE + 1
+COM1_BUFFER_SIZE equ 512
+.buffer_pos dw 0
