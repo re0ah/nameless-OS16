@@ -70,27 +70,30 @@ kernel:
 ;	mov		ax,		KERNEL_SEGMENT
 	mov		ds,		ax
 	call	serial_init
+
+	push	es
+
+	push	ds
+	pop		es
+	mov		si,		testfrom
+	mov		di,		test_data_file
+	call	fat12_load_file
+
+	pop		es
+
 	mov		si,		testto
-	mov		bx,		data_file
-	mov		cx,		DATA_FILE_SIZE
+	mov		bx,		test_data_file
+	mov		cx,		TEST_DATA_FILE_SIZE
 	call	fat12_write_file
 .to_tty:
 	call	tty_start
 	jmp		0xFFFF:0000 ;reboot
 
-testfrom db "TESTFROMBIN"
+testfrom db "PONG    BIN"
 testto db "TESTTO  BIN"
 
-data_file db 0xBB
-		  db 0x00
-		  db 0x00
-		  db 0xCD
-
-		  db 0x20
-		  db 0x31
-		  db 0xC0
-		  db 0xCB
-	DATA_FILE_SIZE equ $ - data_file
+test_data_file times 1024 db 0
+	TEST_DATA_FILE_SIZE equ $ - test_data_file
 
 last_exit_status dw 0
 execve:
@@ -99,17 +102,15 @@ execve:
 ;out:
 ;need load the fat12, found entry and load to bin to memory on PROCESS_SEGMENT
 ;kernel functions calls throught syscall 0x20, list in the kernel.inc
-	call	fat12_find_entry
+	push	es
+	push	PROCESS_SEGMENT
+	pop		es
+	xor		di,		di
+	call	fat12_load_file
+	pop		es
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
 	je		.not_found
 	call	save_interrupts ;pit & keyboard
-	push	es
-;es = PROCESS_SEGMENT
-	push	PROCESS_SEGMENT
-	pop		es
-	xor		si,		si
-	call	fat12_load_entry
-	pop		es
 ;Now, file was load. Execute him
 	mov		bp,		word[argv_ptr]
 	push	PROCESS_SEGMENT
@@ -137,5 +138,5 @@ execve:
 %include "pit.asm"
 %include "keyboard.asm"
 
-KERNEL_SIZE equ 3646
+KERNEL_SIZE equ 4673
 KERNEL_SIZE_WITH_BUFFER equ KERNEL_SIZE + KB_BUF_SIZE

@@ -277,6 +277,7 @@ fat12_load_entry:
 ;	  si = pos fat12 element
 ;	  di = where to load data
 ;	  bp = file marker of fat element
+;	  gs = DISK_BUFFER
 	mov		di,		si ;store ptr where to load data
 	mov		bx,		ax ;fat12 entry ptr
 	push	DISK_BUFFER
@@ -352,9 +353,13 @@ fat12_rename_file:
 
 fat12_create_entry:
 ;in:  si = filename
+;	  ax = cluster location
+;	  cx = filesize
 ;out: 
-	call	fat12_read_root
 	push	es
+	push	cx
+	push	ax
+	call	fat12_read_root
 	push	DISK_BUFFER
 	pop		es
 	xor		di,		di
@@ -367,6 +372,9 @@ fat12_create_entry:
 	je		.found_free_entry
 	add		di,		32
 	loop	.next_entry
+;root is full
+	pop		ax
+	pop		cx
 	pop		es
 	retn
 .found_free_entry:
@@ -378,6 +386,10 @@ fat12_create_entry:
 	rep		stosb
 
 	sub		di,		32
+	pop		ax
+	mov		word[es:di + 26],	ax		;cluster location
+	pop		cx
+	mov		word[es:di + 28],	cx	;filesize
 	call	fat12_set_time_now_entry
 	call	fat12_set_date_now_entry
 
@@ -392,6 +404,18 @@ fat12_create_entry:
 
 	int		0x13
 	pop		es
+	retn
+
+fat12_load_file:
+;in: ds:si = name of file
+;	 es:di = ptr to load
+	push	di
+	call	fat12_find_entry
+	pop		si
+	cmp		ax,		FAT12_ENTRY_NOT_FOUND
+	je		.end
+	call	fat12_load_entry
+.end:
 	retn
 
 fat12_set_time_now_entry:
@@ -649,6 +673,15 @@ fat12_write_file:
 	int		0x13		; Write sectors
 	popa				; And restore from start of system call
 
+	; Now it's time to head back to the root directory, find our
+	; entry and update it with the cluster in use and file size
+	
+	mov		si,		word[.filename]
+	mov		ax,		word[.free_clusters]	;get first free cluster
+	mov		cx,		word[.filesize]
+	call	fat12_create_entry
+
+	pop		es
 	; Now it's time to save the sectors to disk!
 
 	xor		cx,		cx
@@ -682,30 +715,6 @@ fat12_write_file:
 
 .write_root_entry:
 
-	; Now it's time to head back to the root directory, find our
-	; entry and update it with the cluster in use and file size
-	
-	mov		si,		word[.filename]
-	call	fat12_create_entry
-
-	mov		ax,		word[.free_clusters]	;get first free cluster
-
-	mov		word[es:di + 26],	ax		;cluster location
-
-	mov		cx,		word[.filesize]
-	mov		word[es:di + 28],	cx	;filesize
-	mov		word[es:di + 30],	0	;filesize
-
-	mov		ax,		19		;start of root dir sector
-	call	l2hts
-
-	xor		bx,		bx		;from es:bx reading
-
-	mov		ax,		0x030E	;write 14 sectors
-
-	int		0x13
-
-	pop		es
 	retn
 
 	.filesize	dw 0

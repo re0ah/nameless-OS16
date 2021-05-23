@@ -51,7 +51,6 @@ snake:
 						   ;why this mode? In them symbols are square, x=y
 	int		0x10
 
-	int		0x20
 	mov		bx,		SYSCALL_VGA_CURSOR_DISABLE
 	int		0x20
 .start:
