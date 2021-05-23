@@ -235,8 +235,8 @@ tty_push_enter:
 ;clean stack
 	mov		di,		sp
 	push	es
-	mov		ax,		ss
-	mov		es,		ax
+	push	ss
+	pop		es
 	mov		cx,		dx
 	xor		al,		al
 	rep		stosb

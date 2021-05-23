@@ -426,7 +426,7 @@ _interrupt_set_rand_seed:
 ;	  bx = KERNEL_SEGMENT
 	push	KERNEL_SEGMENT
 	pop		ds
-	call	set_rand_seed
+	mov		word[rand_int_seed],	ax
 	retn
 
 _interrupt_execve:

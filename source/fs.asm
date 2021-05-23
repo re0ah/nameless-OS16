@@ -511,13 +511,12 @@ fat12_write_file:
 
 .more_odd:
 	inc		bx				; If not, bump our counter
-	dec		si				; 'lodsw' moved on two chars; we only want to move on one
 
-	mov		ax,		word[es:si]
-	add		si,		2
+	mov		ax,		word[es:si - 1]
+	inc		si
 	shr		ax,		4			; Shift for odd
-	or		ax,		ax			; Free entry?
-	jz		.found_free_odd
+	test	ax,		ax			; Free entry?
+	je		.found_free_odd
 
 .more_even:
 	inc		bx				; If not, keep going
@@ -527,12 +526,11 @@ fat12_write_file:
 	push	si
 	mov		si,		.free_clusters		; Store cluster
 	add		si,		dx
-	mov		word[si],	bx
+	mov		word[ds:si],	bx
 	pop		si
 
 	dec		cx				; Got all the clusters we need?
-	test	cx,		cx
-	je		.finished_list
+	jcxz	.finished_list
 
 	add		dx,		2
 	jmp		.more_odd
@@ -541,12 +539,11 @@ fat12_write_file:
 	push	si
 	mov		si,		.free_clusters		; Store cluster
 	add		si,		dx
-	mov		word[si],	bx
+	mov		word[ds:si],	bx
 	pop		si
 
 	dec		cx
-	test	cx,		cx
-	je		.finished_list
+	jcxz	.finished_list
 
 	add		dx,		2
 	jmp		.more_even
@@ -567,7 +564,7 @@ fat12_write_file:
 	mov		di,		.free_clusters
 
 	add		di,		cx
-	mov		bx,		word[di]		; Get cluster
+	mov		bx,		word[ds:di]		; Get cluster
 
 	mov		ax,		bx			; Find out if it's an odd or even cluster
 	xor		dx,		dx
@@ -586,7 +583,7 @@ fat12_write_file:
 	and		ax,		0x000F			; Zero out bits we want to use
 	mov		di,		.free_clusters
 	add		di,		cx			; Get offset in .free_clusters
-	mov		bx, 	word[di + 2]		; Get number of NEXT cluster
+	mov		bx, 	word[ds:di + 2]		; Get number of NEXT cluster
 	shl		bx,		4			; And convert it into right format for FAT
 	add		ax,		bx
 
@@ -600,7 +597,7 @@ fat12_write_file:
 	and		ax,		0xF000			; Zero out bits we want to use
 	mov		di,		.free_clusters
 	add		di,		cx			; Get offset in .free_clusters
-	mov		bx,		word[di + 2]		; Get number of NEXT free cluster
+	mov		bx,		word[ds:di + 2]		; Get number of NEXT free cluster
 
 	add		ax,		bx
 
@@ -627,8 +624,8 @@ fat12_write_file:
 	mov		si,		ax			; AX = word in FAT for the 12 bit entry
 	mov		ax,		word[es:si]
 
-	or		dx,		dx			; If DX = 0, [.cluster] = even; if DX = 1 then odd
-	jz		.even_last
+	test	dx,		dx			; If DX = 0, [.cluster] = even; if DX = 1 then odd
+	je		.even_last
 
 .odd_last:
 	and		ax,		0x000F			; Set relevant parts to FF8h (last cluster in file)
@@ -647,8 +644,7 @@ fat12_write_file:
 
 	xor		bx,		bx
 
-	mov		ah,		3			; Params for int 13h: write floppy sectors
-	mov		al,		9			; And write 9 of them for first FAT
+	mov		ax,		0x0309	;write 9 sectors to first FAT
 
 	int		0x13		; Write sectors
 	popa				; And restore from start of system call
@@ -660,24 +656,27 @@ fat12_write_file:
 .save_loop:
 	mov		di,		.free_clusters
 	add		di,		cx
-	mov		ax,		word[di]
+	mov		ax,		word[ds:di]
 
-	cmp		ax,		0
-	je near .write_root_entry
+	test	ax,		ax
+	je		.write_root_entry
 
 	pusha
 	add		ax,		31
 
 	call	l2hts
 
-	mov		bx,		word[.location]
+	push	es
+	push	KERNEL_SEGMENT
+	pop		es
+	mov		bx,		word[ds:.location]
 
-	mov		ah,		3
-	mov		al,		1
+	mov		ax,		0x0301	;write 1 sector
 	int		0x13
+	pop		es
 	popa
 
-	add		word[.location], 512
+	add		word[ds:.location], 512
 	add		cx,		2
 	jmp		.save_loop
 

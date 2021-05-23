@@ -32,6 +32,7 @@ fstat:
 	mov		bx,		SYSCALL_FAT12_FILE_SIZE
 	mov		si,		tst
 	int		0x20
+	retf
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
 	je		.not_found
 

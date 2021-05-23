@@ -41,8 +41,8 @@ dir:
 ;|fname, ' ', ext|' '|   fsize  |' '|date|' '| time |
 ;|---------------|---|----------|---|----|---|------|
 ;ds = disk buffer
-	mov		ax,		DISK_BUFFER
-	mov		ds,		ax
+	push	DISK_BUFFER
+	pop		ds
 ;es = ss
 	push	es	;store es
 	push	ss
@@ -205,4 +205,4 @@ to_num:
 	pop		ds
 	pop		bx
 	retn
-num_to_ascii_buf times 6 db " "
+num_to_ascii_buf:

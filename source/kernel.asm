@@ -72,7 +72,7 @@ kernel:
 	call	serial_init
 	mov		si,		testto
 	mov		bx,		data_file
-	mov		cx,		1
+	mov		cx,		DATA_FILE_SIZE
 	call	fat12_write_file
 .to_tty:
 	call	tty_start
@@ -81,7 +81,16 @@ kernel:
 testfrom db "TESTFROMBIN"
 testto db "TESTTO  BIN"
 
-data_file db 0xCB
+data_file db 0xBB
+		  db 0x00
+		  db 0x00
+		  db 0xCD
+
+		  db 0x20
+		  db 0x31
+		  db 0xC0
+		  db 0xCB
+	DATA_FILE_SIZE equ $ - data_file
 
 last_exit_status dw 0
 execve:
@@ -128,5 +137,5 @@ execve:
 %include "pit.asm"
 %include "keyboard.asm"
 
-KERNEL_SIZE equ 3644
+KERNEL_SIZE equ 3646
 KERNEL_SIZE_WITH_BUFFER equ KERNEL_SIZE + KB_BUF_SIZE
