@@ -101,55 +101,53 @@ START_USER_DATA equ START_OF_ROOT + SECTORS_TO_ROOT_DIR ;33
 ;==============================================================================
 
 ;DOS 4.0 EBPB, disk description table
-MAIN_EBPB:
-	.OEM_label			 times 9 db ' '
-	.bytes_per_sector	 dw 0
-	.sectors_per_cluster db 0
-	.reserved_for_boot	 dw 0
-	.number_of_fats		 db 0
-	.root_dir_entries	 dw 0
-	.logical_sectors	 dw 0
-	.medium_byte		 db 0
-	.sectors_per_fat	 dw 0
-	.sectors_per_track	 dw 0
-	.sides				 dw 0
-	.hidden_sectors		 dd 0
-	.large_sectors		 dd 0
-	.drive_no			 db 0
-	.reserved			 db 0
-	.signature			 db 0
-	.volume_id			 dd 0
-	.volume_label		 times 11 db ' '
-	.file_system		 db "FAT12   "
-MAIN_EBPB_SIZE equ $ - MAIN_EBPB
+;MAIN_EBPB:
+;	.OEM_label			 times 9 db ' '
+;	.bytes_per_sector	 dw 0
+;	.sectors_per_cluster db 0
+;	.reserved_for_boot	 dw 0
+;	.number_of_fats		 db 0
+;	.root_dir_entries	 dw 0
+;	.logical_sectors	 dw 0
+;	.medium_byte		 db 0
+;	.sectors_per_fat	 dw 0
+;	.sectors_per_track	 dw 0
+;	.sides				 dw 0
+;	.hidden_sectors		 dd 0
+;	.large_sectors		 dd 0
+;	.drive_no			 db 0
+;	.reserved			 db 0
+;	.signature			 db 0
+;	.volume_id			 dd 0
+;	.volume_label		 times 11 db ' '
+;	.file_system		 db "FAT12   "
+;MAIN_EBPB_SIZE equ $ - MAIN_EBPB
 
-sector_size dw 512
-
-fs_init:
+;fs_init:
 ;get EBPB from bootloader and save disk description table
-	push	es
-	xor		ax,		ax	;read first sector - bootloader contain info about disk
-	call	l2hts
-	mov		ax,		0x0201			;AH: BIOS function read sectors from drive
+;	push	es
+;	xor		ax,		ax	;read first sector - bootloader contain info about disk
+;	call	l2hts
+;	mov		ax,		0x0201			;AH: BIOS function read sectors from drive
 									;AL		Sectors To Read Count
 									;CH		Cylinder
 									;CL		Sector
 									;DH		Head
-									;DL		Drive
-	push	DISK_BUFFER				;ES:BX	Buffer Address Pointer
-	pop		es
-	xor		bx,		bx
-									;Results CF Set On Error, Clear If No Error
-	int		0x13	;BIOS disk routines
+;									;DL		Drive
+;	push	DISK_BUFFER				;ES:BX	Buffer Address Pointer
+;	pop		es
+;	xor		bx,		bx
+;									;Results CF Set On Error, Clear If No Error
+;	int		0x13	;BIOS disk routines
 
 ;need save ebpb from disk
-	mov		si,		MAIN_EBPB
-	xor		di,		di
-	mov		cx,		MAIN_EBPB_SIZE
-	rep		movsb
+;	mov		si,		MAIN_EBPB
+;	xor		di,		di
+;	mov		cx,		MAIN_EBPB_SIZE
+;	rep		movsb
 
-	pop		es
-	retn
+;	pop		es
+;	retn
 
 fat12_read_root:
 ;read fat12 root in DISK_BUFFER
@@ -186,10 +184,7 @@ fat12_file_size:
 ;	  not found: ax = FAT12_ENTRY_NOT_FOUND
 	call	fat12_find_entry
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
-	je		.not_found
-	jmp		fat12_file_entry_size
-.not_found:
-	retn
+	je		fat12_file_entry_size.end
 
 fat12_file_entry_size:
 ;in:  DISK_BUFFER:ax = ptr on fat12 entry
@@ -202,6 +197,7 @@ fat12_file_entry_size:
 	mov		ax,		word[fs:bx + 28]
 	mov		dx,		word[fs:bx + 30]
 	pop		fs
+.end:
 	retn
 
 fat12_find_entry:
@@ -387,7 +383,7 @@ fat12_create_entry:
 
 	sub		di,		32
 	pop		ax
-	mov		word[es:di + 26],	ax		;cluster location
+	mov		word[es:di + 26],	ax	;cluster location
 	pop		cx
 	mov		word[es:di + 28],	cx	;filesize
 	call	fat12_set_time_now_entry
@@ -429,15 +425,20 @@ fat12_set_time_now_entry:
 ;|10-5 |   Minutes (0-59)  |
 ;| 4-0 |  Seconds/2 (0-29) |
 ;|-----|-------------------|
-	call	rtc_get_hour_bin
+	mov		al,		RTC_HOUR
+	call	rtc_get_data_bin
 	shl		ax,		11
 	and		ax,		0xF800
 	mov		bx,		ax
-	call	rtc_get_min_bin
+
+	mov		al,		RTC_MINUTE
+	call	rtc_get_data_bin
 	shl		ax,		5
 	and		ax,		0x07E0
 	mov		cx,		ax
-	call	rtc_get_sec_bin
+
+	mov		al,		RTC_SECOND
+	call	rtc_get_data_bin
 	shr		ax,		1
 	and		ax,		0x001F
 	or		ax,		bx
@@ -457,17 +458,24 @@ fat12_set_date_now_entry:
 ;|  8-5 |    Month (1-12)   |
 ;|  4-0 |    Days  (1-31)   |
 ;|------|-------------------|
-	call	rtc_get_century_bin
+	mov		al,		RTC_CENTURY
+	call	rtc_get_data_bin
 	mov		bx,		ax
-	call	rtc_get_year_bin
+
+	mov		al,		RTC_YEAR
+	call	rtc_get_data_bin
 	add		bx,		ax
 	shl		bx,		9
 	and		bx,		0xFE00
-	call	rtc_get_month_bin
+
+	mov		al,		RTC_MONTH
+	call	rtc_get_data_bin
 	shl		ax,		5
 	and		ax,		0x01E0
 	mov		cx,		ax
-	call	rtc_get_day_bin
+
+	mov		al,		RTC_DAY
+	call	rtc_get_data_bin
 	and		ax,		0x001F
 	or		ax,		bx
 	or		ax,		cx
@@ -494,15 +502,15 @@ fat12_write_file:
 ;	  cx = data size
 ;out:
 	push	es
-	mov		word[.filename],	si
-	mov		word[.location],	bx
-	mov		word[.filesize],	cx
+	mov		word[fat12_write_file_filename],	si
+	mov		word[fat12_write_file_location],	bx
+	mov		word[fat12_write_file_size],	cx
 
 ;es = ds
 	push	ds
 	pop		es
 ;zeroing array
-	mov		di,		.free_clusters
+	mov		di,		fat12_write_file_free_clusters
 	xor		ax,		ax
 	mov		cx,		128
 	rep		stosw	;word[es:di] = ax
@@ -511,7 +519,7 @@ fat12_write_file:
 	pop		es
 
 ;how many 512 byte clusters are needed
-	mov		ax,		word[.filesize]
+	mov		ax,		word[fat12_write_file_size]
 	xor		dx,		dx
 	div		word[sector_size]
 	test	dx,		dx
@@ -519,13 +527,13 @@ fat12_write_file:
 .not_aliquot:
 	inc		ax
 .aliquot:
-	mov		word[.clusters_needed], ax
+	mov		word[fat12_write_file_clusters_needed], ax
 
 	call	fat12_read_fat
 	mov		si,		3		;skipping first two clusters
 
 	mov		bx,		2		;Current cluster counter
-	mov		cx,		word[.clusters_needed]
+	mov		cx,		word[fat12_write_file_clusters_needed]
 	xor		dx,		dx			;offset in .free_clusters list
 .find_free_cluster:
 	mov		ax,		word[es:si]
@@ -548,7 +556,7 @@ fat12_write_file:
 
 .found_free_even:
 	push	si
-	mov		si,		.free_clusters		; Store cluster
+	mov		si,		fat12_write_file_free_clusters		; Store cluster
 	add		si,		dx
 	mov		word[ds:si],	bx
 	pop		si
@@ -561,7 +569,7 @@ fat12_write_file:
 
 .found_free_odd:
 	push	si
-	mov		si,		.free_clusters		; Store cluster
+	mov		si,		fat12_write_file_free_clusters		; Store cluster
 	add		si,		dx
 	mov		word[ds:si],	bx
 	pop		si
@@ -578,14 +586,19 @@ fat12_write_file:
 	; that correspond to free clusters on the disk; the next job is to
 	; create a cluster chain in the FAT for our file
 
+	mov		si,		word[fat12_write_file_filename]
+	mov		ax,		word[fat12_write_file_free_clusters]	;get first free cluster
+	mov		cx,		word[fat12_write_file_size]
+	call	fat12_create_entry
+
 	xor		cx,		cx			; .free_clusters offset counter
-	mov		word[.count],	1		; General cluster counter
+	mov		word[fat12_write_file_count],	1		; General cluster counter
 .chain_loop:
-	mov		ax,		word[.count]		; Is this the last cluster?
-	cmp		ax,		word[.clusters_needed]
+	mov		ax,		word[fat12_write_file_count]		; Is this the last cluster?
+	cmp		ax,		word[fat12_write_file_clusters_needed]
 	je		.last_cluster
 
-	mov		di,		.free_clusters
+	mov		di,		fat12_write_file_free_clusters
 
 	add		di,		cx
 	mov		bx,		word[ds:di]		; Get cluster
@@ -605,7 +618,7 @@ fat12_write_file:
 
 .odd:
 	and		ax,		0x000F			; Zero out bits we want to use
-	mov		di,		.free_clusters
+	mov		di,		fat12_write_file_free_clusters
 	add		di,		cx			; Get offset in .free_clusters
 	mov		bx, 	word[ds:di + 2]		; Get number of NEXT cluster
 	shl		bx,		4			; And convert it into right format for FAT
@@ -613,13 +626,13 @@ fat12_write_file:
 
 	mov		word[es:si],	ax		; Store cluster data back in FAT copy in RAM
 
-	inc		word[.count]
+	inc		word[fat12_write_file_count]
 	add		cx,		2
 
 	jmp		.chain_loop
 .even:
 	and		ax,		0xF000			; Zero out bits we want to use
-	mov		di,		.free_clusters
+	mov		di,		fat12_write_file_free_clusters
 	add		di,		cx			; Get offset in .free_clusters
 	mov		bx,		word[ds:di + 2]		; Get number of NEXT free cluster
 
@@ -627,13 +640,13 @@ fat12_write_file:
 
 	mov		word[es:si], ax		; Store cluster data back in FAT copy in RAM
 
-	inc		word[.count]
+	inc		word[fat12_write_file_count]
 	add		cx,		2
 
 	jmp		.chain_loop
 
 .last_cluster:
-	mov		di,		.free_clusters
+	mov		di,		fat12_write_file_free_clusters
 	add		di,		cx
 	mov		bx,		word[di]		; Get cluster
 
@@ -676,18 +689,13 @@ fat12_write_file:
 	; Now it's time to head back to the root directory, find our
 	; entry and update it with the cluster in use and file size
 	
-	mov		si,		word[.filename]
-	mov		ax,		word[.free_clusters]	;get first free cluster
-	mov		cx,		word[.filesize]
-	call	fat12_create_entry
-
 	pop		es
 	; Now it's time to save the sectors to disk!
 
 	xor		cx,		cx
 
 .save_loop:
-	mov		di,		.free_clusters
+	mov		di,		fat12_write_file_free_clusters
 	add		di,		cx
 	mov		ax,		word[ds:di]
 
@@ -702,32 +710,20 @@ fat12_write_file:
 	push	es
 	push	KERNEL_SEGMENT
 	pop		es
-	mov		bx,		word[ds:.location]
+	mov		bx,		word[ds:fat12_write_file_location]
 
 	mov		ax,		0x0301	;write 1 sector
 	int		0x13
 	pop		es
 	popa
 
-	add		word[ds:.location], 512
+	add		word[ds:fat12_write_file_location], 512
 	add		cx,		2
 	jmp		.save_loop
 
 .write_root_entry:
 
 	retn
-
-	.filesize	dw 0
-	.cluster	dw 0
-	.count		dw 0
-	.location	dw 0
-
-	.clusters_needed	dw 0
-
-	.filename	dw 0
-
-	.free_clusters	times 128 dw 0
-
 
 l2hts:
 ;in:  logical sector in AX

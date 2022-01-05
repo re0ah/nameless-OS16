@@ -27,17 +27,12 @@ PIC_EOI		   equ 0x20	;end of interrupt code
 KB_DATA_PORT   equ 0x60
 KB_STATUS_PORT equ 0x64
 
-KB_BUF_SIZE   equ 64
-;kb_buf		  times KB_BUF_SIZE db 0
-kb_buf		  equ KERNEL_SIZE + 1
-kb_buf_pos	  db 0
-
 ;LED status bitset:
 	;0:    scroll lock
 	;1:    num lock
 	;2:    caps lock
 	;3..7: unused
-kb_led_status db 0
+;kb_led_status db 0
 
 KB_LED_SCRL			   equ 0x01
 KB_LED_MASK_SET_SCRL   equ 0x01
@@ -56,6 +51,17 @@ KB_WRITE_SET_SCANCODE equ 0xF0
 KB_SCANCODE_SET		  equ 0x00
 
 keyboard_init:
+;test ps/2
+;	call	keyboard_wait_port
+;	mov		al,		0xAA
+;	out		KB_STATUS_PORT,	al
+
+;	call	keyboard_wait_port
+;	in		al,		KB_DATA_PORT
+;	cmp		al,		0x55
+;	je		.exit
+;	jmp		0xFFFF:0x0000
+.exit:
 ;set scancode set
 ;	call	keyboard_wait_port
 ;	mov		al,		KB_WRITE_SET_SCANCODE
@@ -70,11 +76,18 @@ keyboard_init:
 	retn
 
 keyboard_int:
+pusha
 ;push scancode to kb_buf, set led, caps...
 	push	ds
 	push	KERNEL_SEGMENT
 	pop		ds
 
+	cmp		byte[kb_miss],	0
+	je		.continue
+	dec		byte[kb_miss]
+	jmp		.exit
+
+.continue:
 	call	keyboard_wait_port
 	in		al,		KB_DATA_PORT ;get scancode
 
@@ -82,7 +95,7 @@ keyboard_int:
 	je		.exit
 	cmp		al,		0xFE
 	je		.exit
-	cmp		al,		0x00
+	test	al,		al
 	je		.exit
 	cmp		al,		0xEE
 	je		.exit
@@ -99,9 +112,8 @@ keyboard_int:
 	call	push_kb_buf
 .exit:
 	pop		ds
-	mov		al,		PICM
-	out		PIC_EOI, al
-	iret
+	popa
+	jmp		return_from_interrupt
 
 kb_pause:
 	in		al,		KB_DATA_PORT
@@ -112,10 +124,7 @@ kb_pause:
 	mov		al,		SCANCODE_OS_MAKE_PAUSE
 	call	push_kb_buf
 	
-	pop		ds
-	mov		al,		PICM
-	out		PIC_EOI, al
-	iret
+	jmp		keyboard_int.exit
 
 kb_make_print:
 	in		al,		KB_DATA_PORT
@@ -124,10 +133,7 @@ kb_make_print:
 	mov		al,		SCANCODE_OS_MAKE_PRINT
 	call	push_kb_buf
 	
-	pop		ds
-	mov		al,		PICM
-	out		PIC_EOI, al
-	iret
+	jmp		keyboard_int.exit
 
 kb_break_print:
 	in		al,		KB_DATA_PORT
@@ -136,14 +142,13 @@ kb_break_print:
 	mov		al,		SCANCODE_OS_BREAK_PRINT
 	call	push_kb_buf
 	
-	pop		ds
-	mov		al,		PICM
-	out		PIC_EOI, al
-	iret
+	jmp		keyboard_int.exit
 
+kb_miss db 0
 kb_spec_scancode:
 	call	keyboard_wait_port
 	in		al,		KB_DATA_PORT
+	inc		byte[kb_miss]
 
 	cmp		al,		0x2A
 	je		kb_make_print
@@ -154,10 +159,7 @@ kb_spec_scancode:
 	mov		al,		byte[.data_table + bx]
 	call	push_kb_buf
 
-	pop		ds
-	mov		al,		PICM
-	out		PIC_EOI, al
-	iret
+	jmp		keyboard_int.exit
 .data_table:
 		times 29 db 0
 		db		SCANCODE_OS_MAKE_KP_EN			;0x1C
@@ -219,33 +221,37 @@ kb_spec_scancode:
 		times 3 db 0
 		db		SCANCODE_OS_BREAK_WAKE			;0xE3
 
-KB_OVERFLOW equ 0x00	;this scancode don't used in XT set
+;ring buffer queue
 push_kb_buf:
 ;in:  al = scancode
 ;out: al = KB_OVERFLOW if error, else scancode
 ;	  bx = byte[kb_buf_pos - 1]
-	movzx	bx,		byte[kb_buf_pos]
-	cmp		bx,		KB_BUF_SIZE
-	je		.end_overflow
-	mov		byte[bx + kb_buf],	al
-	inc		byte[kb_buf_pos]
+	mov		bx,		word[kb_buf_ptr_write]
+	mov		byte[bx],	al
+	call	inc_kb_buf_ptr
+	mov		word[kb_buf_ptr_write],	bx
 	retn
-.end_overflow:
-;	mov		al,		KB_OVERFLOW
-	xor		al,		al
+
+inc_kb_buf_ptr:
+;in:  bx is kb_ptr
+;out: bx inc
+	inc		bx
+	cmp		bx,		KB_BUF_END
+	jne		.end_ptr
+	mov		bx,		kb_buf
+.end_ptr:
 	retn
 
 KB_EMPTY equ 0x00	;this scancode don't used in XT set
 pop_kb_buf:
-;in:  al = scancode
 ;out: al = KB_EMPTY if error, else scancode
 ;	  bx = byte[kb_buf_pos]
-	movzx	bx,		byte[kb_buf_pos]
-	test	bx,		bx
+	mov		bx,		word[kb_buf_ptr_read]
+	cmp		bx,		word[kb_buf_ptr_write]
 	je		.end_empty
-	dec		bl
-	mov		byte[kb_buf_pos],	bl
-	mov		al,		byte[bx + kb_buf]
+	mov		al,		byte[bx]
+	call	inc_kb_buf_ptr
+	mov		word[kb_buf_ptr_read],	bx
 	retn
 .end_empty:
 ;	mov		al,		KB_EMPTY
@@ -300,6 +306,10 @@ keyboard_set_led:
 
 keyboard_wait_port:
 .wait:
+;	in		al,		KB_STATUS_PORT
+;	and		al,		0x01
+;	in		al,		KB_DATA_PORT
+;	jnz		.wait
 	in		al,		KB_STATUS_PORT
 	and		al,		0x02	;bit 1: controller current processing data
 	jnz		.wait
@@ -313,11 +323,11 @@ wait_keyboard_input:
 .wait:
 	hlt
 .wait_in:
-	cmp		byte[kb_buf_pos],	0
+	call	pop_kb_buf
+	test	al,		al
 	je		.wait
-	jmp		pop_kb_buf
+	retn
 
-kb_shift_pressed db 0
 check_shift_pressed:
 ;in: al=scancode
 ;set/reset if scancode will shift

@@ -33,47 +33,24 @@ RTC_WEEK	equ 0x06
 RTC_DAY		equ 0x07
 RTC_MONTH	equ 0x08
 RTC_YEAR	equ 0x09
-RTC_CENTURY equ 0x09
+RTC_CENTURY equ 0x32
 
-rtc_get_sec:
-;out: al = seconds from CMOS
-;	mov		al,		RTC_SECONDS
-	xor		al,		al
+
+rtc_get_data_bcd:
+;in:  al = RTC code for get data from CMOS
+;out: al = BCD data from CMOS
+	cmp		al,		RTC_CENTURY
+	je		rtc_get_century
 rtc_get_info:
-;in: al = rtc register address
 	out		RTC_SELECT_PORT,	al
 	in		al,		RTC_RW_PORT
 	retn
 
-rtc_get_min:
-;out: al = minutes from CMOS
-	mov		al,		RTC_MINUTE
-	jmp		rtc_get_info
-
-rtc_get_hour:
-;out: al = hour from CMOS
-	mov		al,		RTC_HOUR
-	jmp		rtc_get_info
-
-rtc_get_week:
-;out: al = week from CMOS
-	mov		al,		RTC_WEEK
-	jmp		rtc_get_info
-
-rtc_get_day:
-;out: al = day from CMOS
-	mov		al,		RTC_DAY
-	jmp		rtc_get_info
-
-rtc_get_month:
-;out: al = month from CMOS
-	mov		al,		RTC_MONTH
-	jmp		rtc_get_info
-
-rtc_get_year:
-;out: al = year from CMOS
-	mov		al,		RTC_YEAR
-	jmp		rtc_get_info
+rtc_get_data_bin:
+;in:  al = RTC code for get data from CMOS
+;out: al = bin data from CMOS
+	call	rtc_get_data_bcd
+	jmp		bcd_to_number
 
 rtc_get_century:
 ;out: al = century from CMOS
@@ -82,7 +59,7 @@ rtc_get_century:
 
 	in		al,		RTC_RW_PORT
 	test	al,		al
-	jne		.if_have_field
+	jne		rtc_get_info
 	cmp		al,		0x90
 	jl		.if_less
 	mov		al,		0x20
@@ -90,144 +67,27 @@ rtc_get_century:
 .if_less:
 	mov		al,		0x90
 	retn
-.if_have_field:
-	jmp		rtc_get_info
-
-rtc_get_ascii_sec:
-;in:  si = address where save time
-;out: al = century from CMOS
-	call	rtc_get_sec
-	jmp		BCD_to_ascii_2_bytes
-
-rtc_get_ascii_min:
-;in:  si = address where save time
-;out: al = century from CMOS
-	call	rtc_get_min
-	jmp		BCD_to_ascii_2_bytes
-
-rtc_get_ascii_hour:
-;in:  si = address where save time
-;out: al = century from CMOS
-	call	rtc_get_hour
-	jmp		BCD_to_ascii_2_bytes
-
-rtc_get_ascii_week:
-;in:  si = address where save time
-;out: al = century from CMOS
-	call	rtc_get_week
-	jmp		BCD_to_ascii_2_bytes
-
-rtc_get_ascii_day:
-;in:  si = address where save time
-;out: al = century from CMOS
-	call	rtc_get_day
-	jmp		BCD_to_ascii_2_bytes
-
-rtc_get_ascii_month:
-;in:  si = address where save time
-;out: al = century from CMOS
-	call	rtc_get_month
-	jmp		BCD_to_ascii_2_bytes
-
-rtc_get_ascii_year:
-;in:  si = address where save time
-;out: al = century from CMOS
-	call	rtc_get_year
-	jmp		BCD_to_ascii_2_bytes
-
-rtc_get_ascii_century:
-;in:  si = address where save time
-;out: al = century from CMOS
-	call	rtc_get_century
-;	jmp		BCD_to_ascii_2_bytes
-
-BCD_to_ascii_2_bytes:
-;in:  al = BCD byte
-;	  si = address where save time
-;out: al = century from CMOS
-	mov		ah,		al
-	and		ah,		0x0F
-	shr		al,		4
-	add		ax,		0x3030
-
-	mov		word[ds:si],	ax
-	retn
 
 bcd_to_number:
 ;in:  al = BCD
 ;out: al = number
 	push	bx
-	push	cx
-	mov		ah,		al
-	xor		al,		al
-	mov		bh,		ah
+	mov		bh,		al
 	and		bh,		0x0F
-	and		ah,		0xF0
-	ror		ah,		4
-	mov		cl,		10
-	mov		al,		ah
-	and		ax,		0x00FF
-	mul		cl
+	shr		al,		3
+	mov		bl,		al
+	shl		bl,		2
+	add		al,		bl
 	add		al,		bh
-	pop		cx
 	pop		bx
 	retn
 
-rtc_get_sec_bin:
-;out: al = seconds from CMOS
-;	mov		al,		RTC_SECONDS
-	xor		al,		al
-rtc_get_info_bin:
-;in: al = rtc register address
-	out		RTC_SELECT_PORT,	al
-	in		al,		RTC_RW_PORT
-	call	bcd_to_number
+set_timezone_utc:
+;in: al = timezone
+	mov		byte[timezone_utc],		al
 	retn
 
-rtc_get_min_bin:
-;out: al = minutes from CMOS
-	mov		al,		RTC_MINUTE
-	jmp		rtc_get_info_bin
-
-rtc_get_hour_bin:
-;out: al = hour from CMOS
-	mov		al,		RTC_HOUR
-	jmp		rtc_get_info_bin
-
-rtc_get_week_bin:
-;out: al = week from CMOS
-	mov		al,		RTC_WEEK
-	jmp		rtc_get_info_bin
-
-rtc_get_day_bin:
-;out: al = day from CMOS
-	mov		al,		RTC_DAY
-	jmp		rtc_get_info_bin
-
-rtc_get_month_bin:
-;out: al = month from CMOS
-	mov		al,		RTC_MONTH
-	jmp		rtc_get_info_bin
-
-rtc_get_year_bin:
-;out: al = year from CMOS
-	mov		al,		RTC_YEAR
-	jmp		rtc_get_info_bin
-
-rtc_get_century_bin:
-;out: al = century from CMOS
-	mov		al,		108
-	out		RTC_SELECT_PORT,	al
-
-	in		al,		RTC_RW_PORT
-	test	al,		al
-	jne		.if_have_field
-	cmp		al,		0x90
-	jl		.if_less
-	mov		al,		20
+get_timezone_utc:
+;out: al = timezone
+	mov		al,		byte[timezone_utc]
 	retn
-.if_less:
-	mov		al,		0x90
-	retn
-.if_have_field:
-	jmp		rtc_get_info_bin

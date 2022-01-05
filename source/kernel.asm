@@ -44,6 +44,8 @@ bits 16
 ;|---------------|0x60000
 ;|      USER     |
 ;|---------------|0x00500 + KERNEL_SIZE
+;| KERNEL BUFFERS|
+;|               |
 ;|     KERNEL    |
 ;|---------------|0x00500
 ;|   BIOS DATA   |
@@ -59,6 +61,7 @@ PROCESS_SEGMENT equ (KERNEL_SIZE_WITH_BUFFER / 16) + KERNEL_SEGMENT + 1
 DISK_BUFFER	equ 0x6000
 STACK_SEGMENT equ 0x8000
 
+;.code segment
 kernel:
 ;init stack segment & stack pointer
 	push	STACK_SEGMENT
@@ -70,30 +73,31 @@ kernel:
 ;	mov		ax,		KERNEL_SEGMENT
 	mov		ds,		ax
 	call	serial_init
+	call	vga_init
 
-	push	es
+;	push	es
 
-	push	ds
-	pop		es
-	mov		si,		testfrom
-	mov		di,		test_data_file
-	call	fat12_load_file
+;	push	ds
+;	pop		es
+;	mov		si,		testfrom
+;	mov		di,		test_data_file
+;	call	fat12_load_file
 
-	pop		es
+;	pop		es
 
-	mov		si,		testto
-	mov		bx,		test_data_file
-	mov		cx,		TEST_DATA_FILE_SIZE
-	call	fat12_write_file
+;	mov		si,		testto
+;	mov		bx,		test_data_file
+;	mov		cx,		TEST_DATA_FILE_SIZE
+;	call	fat12_write_file
 .to_tty:
 	call	tty_start
 	jmp		0xFFFF:0000 ;reboot
 
-testfrom db "PONG    BIN"
-testto db "TESTTO  BIN"
+;testfrom db "SNAKE   BIN"
+;testto db "TESTTO  BIN"
 
-test_data_file times 1024 db 0
-	TEST_DATA_FILE_SIZE equ $ - test_data_file
+;test_data_file times 1024 db 0
+;	TEST_DATA_FILE_SIZE equ $ - test_data_file
 
 last_exit_status dw 0
 execve:
@@ -125,6 +129,7 @@ execve:
 	retn
 .not_found:
 	mov		word[last_exit_status],	FAT12_ENTRY_NOT_FOUND
+return_from_function:
 	retn
 
 %include "vga.asm"
@@ -138,5 +143,152 @@ execve:
 %include "pit.asm"
 %include "keyboard.asm"
 
-KERNEL_SIZE equ 4673
-KERNEL_SIZE_WITH_BUFFER equ KERNEL_SIZE + KB_BUF_SIZE
+
+
+
+;.data segment
+;vga
+vga_color db 0x07 ;bg: black, fg: gray
+vga_bytes_in_row db 160
+
+;tty
+HELLO_MSG db "namelessOS16 v 8", 0x0A, 0x00
+HELLO_MSG_SIZE equ $-HELLO_MSG
+
+PROGRAM_NOT_FOUND db 0x0A, "program not found", 0x00
+PROGRAM_NOT_FOUND_SIZE equ $-PROGRAM_NOT_FOUND
+
+pre_path_now	db '[\]: ', 0
+
+;fs
+sector_size		dw 512
+
+;isr
+pit_interrupt_handler dw pit_int
+pit_interrupt_segment dw KERNEL_SEGMENT
+keyboard_interrupt_handler dw keyboard_int
+keyboard_interrupt_segment dw KERNEL_SEGMENT
+
+syscall_jump_table:
+    dw      _interrupt_vga_clear_screen     ;#0
+    dw      vga_cursor_disable              ;#1
+    dw      vga_cursor_enable               ;#2
+    dw      _interrupt_vga_cursor_move      ;#3
+    dw      _interrupt_tty_putchar_ascii    ;#4
+    dw      _interrupt_tty_print_ascii      ;#5
+    dw      _interrupt_tty_print_ascii_c    ;#6
+    dw      _interrupt_tty_next_row         ;#7
+    dw      fat12_read_root                 ;#8
+    dw      fat12_find_entry                ;#9
+    dw      fat12_load_entry                ;#10
+    dw      fat12_file_size                 ;#11
+    dw      fat12_file_entry_size           ;#12
+    dw      _interrupt_pit_set_frequency    ;#13
+    dw      _interrupt_pit_get_frequency    ;#14
+    dw      _interrupt_get_keyboard_input   ;#15
+    dw      _interrupt_scancode_to_ascii    ;#16
+    dw      _interrupt_int_to_ascii         ;#17
+    dw      _interrupt_uint_to_ascii        ;#18
+    dw      _interrupt_set_pit_int          ;#19
+    dw      _interrupt_set_keyboard_int     ;#20
+    dw      _interrupt_rand_int             ;#21
+    dw      _interrupt_set_rand_seed        ;#22
+    dw      rtc_get_data_bcd                ;#23
+    dw      rtc_get_data_bin                ;#24
+    dw      bcd_to_number                   ;#25
+    dw      set_timezone_utc                ;#26
+    dw      get_timezone_utc                ;#27
+    dw      _interrupt_execve               ;#28
+
+;string
+FAT12_STR_ONLY_BIN db "BIN" ;READ ONLY!
+
+;random
+rand_int_seed dw 1
+
+;pit
+pit_frequency dw PIT_DEFAULT_FREQUENCY / 32
+
+;keyboard
+kb_buf_ptr_write dw kb_buf
+kb_buf_ptr_read  dw kb_buf
+
+
+
+BSS_START equ KERNEL_SIZE + 1
+;.bss segment
+;vga
+;vga_pos_cursor  dw 0
+vga_pos_cursor equ BSS_START
+;vga_memory_size dw 0
+vga_memory_size equ vga_pos_cursor + 2
+;vga_offset_now dw 0
+vga_offset_now equ vga_memory_size + 2
+
+;tty
+;argv_ptr dw 0
+argv_ptr equ vga_offset_now + 2
+;tty_input_start dw 0
+tty_input_start equ argv_ptr + 2
+;tty_input_end dw 0
+tty_input_end equ tty_input_start + 2
+
+;fs
+;fat12_write_file_size   	dw 0
+fat12_write_file_size equ tty_input_end + 2
+;fat12_write_file_cluster    dw 0
+fat12_write_file_cluster equ fat12_write_file_size + 2
+;fat12_write_file_count      dw 0
+fat12_write_file_count equ fat12_write_file_cluster + 2
+;fat12_write_file_location   dw 0
+fat12_write_file_location equ fat12_write_file_count + 2
+;fat12_write_file_clusters_needed    dw 0
+fat12_write_file_clusters_needed equ fat12_write_file_location + 2
+;fat12_write_file_filename   dw 0
+fat12_write_file_filename equ fat12_write_file_clusters_needed + 2
+;fat12_write_file_free_clusters  times 128 dw 0
+fat12_write_file_free_clusters equ fat12_write_file_filename + 2
+
+;string
+;num_to_ascii_buf times 6 db " "
+num_to_ascii_buf equ fat12_write_file_free_clusters + 256
+;FAT12_STR times 11 db 0
+FAT12_STR equ num_to_ascii_buf + 6
+FAT12_STRLEN equ 11
+FAT12_STRLEN_WITHOUT_EXT equ 8
+FAT12_EXT equ FAT12_STR + 8
+
+;serial
+;COM1_BUFFER times 512 db 0 
+COM1_BUFFER equ FAT12_STR + 11
+COM1_BUFFER_SIZE equ 512
+;com1_buffer_pos dw 0
+com1_buffer_pos equ COM1_BUFFER + COM1_BUFFER_SIZE
+
+;rtc
+;timezone_utc db 0
+timezone_utc equ com1_buffer_pos + 2
+
+;keyboard
+KB_BUF_SIZE   equ 64
+;kb_buf        times KB_BUF_SIZE db 0
+kb_buf        equ timezone_utc + 1
+KB_BUF_END	 equ kb_buf + KB_BUF_SIZE
+;kb_led_status db 0
+kb_led_status equ KB_BUF_END + 1
+;kb_shift_pressed db 0
+kb_shift_pressed equ kb_led_status + 1
+
+
+BSS_SIZE equ kb_shift_pressed + 1
+
+
+
+
+
+
+
+
+KERNEL_SIZE equ 3260
+BUFFERS_SIZE equ BSS_SIZE
+KERNEL_SIZE_WITH_BUFFER equ KERNEL_SIZE + BUFFERS_SIZE

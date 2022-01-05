@@ -23,15 +23,34 @@
 
 ;For more information, please refer to <http://unlicense.org/>
 
-rand_int:
-;in:
-;out: ax = pseudo random number
-;	  dx = ???
-	mov		ax,		word[rand_int_seed]
-	imul	ax, 	0x053D
-	add		ax,		17205
-	mov		word[rand_int_seed],	ax
-;	mov		bx,		326
-;	div		bx
-;	add		ax,		dx
-	retn
+%include "../source/syscall.inc"
+settz:
+	xor		ax,		ax
+.lp_argv_len:
+	mov		cl,		byte[ss:bp]
+	inc		al
+	inc		bp
+	test	cl,		cl
+	jne		.lp_argv_len
+	dec		al
+	dec		bp
+	dec		bp
+
+	mov		di,		1
+	xor		bx,		bx
+.str_to_uint:
+	movzx	cx,		byte[ss:bp]
+	sub		cx,		0x30
+	imul	cx,		di
+	imul	di,		10
+	add		bx,		cx
+	dec		bp
+	dec		al
+	test	al,		al
+	jne		.str_to_uint
+
+	push	bx
+	pop		ax
+	mov		bx,		SYSCALL_RTC_SET_TIMEZONE_UTC
+	int		0x20
+	retf

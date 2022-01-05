@@ -144,7 +144,7 @@ com1_int:
 ;for this interruption need buffer where will be stored received data.
 ;	in case of overflow data will be lost. In future, maybe, data will be saved
 ;in disk
-	mov		bx,		word[.buffer_pos]
+	mov		bx,		word[com1_buffer_pos]
 	cmp		bx,		COM1_BUFFER_SIZE
 	je		.buffer_overflow
 
@@ -153,12 +153,6 @@ com1_int:
 
 	mov		byte[COM1_BUFFER + bx],	al
 	inc		bx
-	mov		word[.buffer_pos],	bx
+	mov		word[com1_buffer_pos],	bx
 .buffer_overflow:
-	mov		al,		PICM	;master PIC
-	out		PIC_EOI,	al
-	iret
-;.buffer times 512 db 0
-COM1_BUFFER equ KERNEL_SIZE + KB_BUF_SIZE + 1
-COM1_BUFFER_SIZE equ 512
-.buffer_pos dw 0
+	jmp		return_from_interrupt

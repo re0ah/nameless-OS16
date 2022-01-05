@@ -1,5 +1,3 @@
-;rewriting code from https://github.com/YotamShvartsun/best-pong-ever
-
 %include "../source/syscall.inc"
 PICM	equ 0x20 ;master PIC
 PIC_EOI equ 0x20 ;end of interrupt code

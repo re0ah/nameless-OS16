@@ -51,16 +51,11 @@ PIT_MODE3 equ 0x06
 PIT_RW4	  equ 0x30
 PIT_CONTROL_WORD_FORMAT equ PIT_MODE3 | PIT_RW4
 PIT_DEFAULT_FREQUENCY equ 1193182 ;that is 0x001234DE, 32bit value.
-								;need to be careful with him
+								  ;need to be careful with him
 
 pit_init:
 ;just set frequency of PIT
 	mov		ax,		PIT_DEFAULT_FREQUENCY / 32
-	call	pit_set_frequency
-	retn
-
-pit_frequency dw PIT_DEFAULT_FREQUENCY / 32
-
 pit_set_frequency:
 ;in:  ax = frequency
 ;out: al = ah
@@ -75,8 +70,4 @@ pit_set_frequency:
 	retn
 
 pit_int:
-	pusha
-	mov		al,		PICM
-	out		PIC_EOI, al
-	popa
-	iret
+	jmp		return_from_interrupt

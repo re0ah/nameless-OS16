@@ -38,6 +38,14 @@ IVT_ADDR_COM1_SEGMENT	  equ 0x0032
 
 IVT_ADDR_SYSCALL_FUNC	  equ 0x0080 ;int 0x20 
 IVT_ADDR_SYSCALL_SEGMENT  equ 0x0082
+
+return_from_interrupt:
+	push	ax
+	mov		al,		PICM
+	out		PIC_EOI, al
+	pop		ax
+	iret
+
 load_isr:
 ;in:
 ;out: ax = KERNEL_SEGMENT
@@ -56,13 +64,10 @@ load_isr:
 	mov		word[gs:IVT_ADDR_COM1_SEGMENT],		ax
 	mov		word[gs:IVT_ADDR_SYSCALL_FUNC],		syscall
 	mov		word[gs:IVT_ADDR_SYSCALL_SEGMENT],	ax
+	mov		ax,		KERNEL_SEGMENT
 	sti
 	retn
 
-pit_interrupt_handler dw pit_int
-pit_interrupt_segment dw KERNEL_SEGMENT
-keyboard_interrupt_handler dw keyboard_int
-keyboard_interrupt_segment dw KERNEL_SEGMENT
 save_interrupts:
 ;save current PIT and keyboard interrupt ISR function & segment
 ;in variable's above
@@ -140,52 +145,11 @@ syscall:
 	push	KERNEL_SEGMENT
 	pop		gs		;throught gs segment get address from table
 ;getting address of function
-	mov		bx,		word[gs:bx + .jump_table]
+	mov		bx,		word[gs:bx + syscall_jump_table]
 	pop		gs
 	call	bx
 	pop		ds
 	iret
-.jump_table:
-	dw		_interrupt_vga_clear_screen		;#0
-	dw		vga_cursor_disable				;#1
-	dw		vga_cursor_enable				;#2
-	dw		_interrupt_vga_cursor_move		;#3
-	dw		_interrupt_tty_putchar_ascii	;#4
-	dw		_interrupt_tty_print_ascii		;#5
-	dw		_interrupt_tty_print_ascii_c	;#6
-	dw		_interrupt_tty_next_row			;#7
-	dw		fat12_read_root					;#8
-	dw		fat12_find_entry				;#9
-	dw		fat12_load_entry				;#10
-	dw		fat12_file_size					;#11
-	dw		fat12_file_entry_size			;#12
-	dw		_interrupt_pit_set_frequency	;#13
-	dw		_interrupt_pit_get_frequency	;#14
-	dw		_interrupt_get_keyboard_input	;#15
-	dw		_interrupt_scancode_to_ascii	;#16
-	dw		_interrupt_int_to_ascii			;#17
-	dw		_interrupt_uint_to_ascii		;#18
-	dw		_interrupt_set_pit_int			;#19
-	dw		_interrupt_set_keyboard_int		;#20
-	dw		_interrupt_rand_int				;#21
-	dw		_interrupt_set_rand_seed		;#22
-	dw		rtc_get_sec						;#23
-	dw		rtc_get_min						;#24
-	dw		rtc_get_hour					;#25
-	dw		rtc_get_day						;#26
-	dw		rtc_get_month					;#27
-	dw		rtc_get_year					;#28
-	dw		rtc_get_century					;#29
-	dw		rtc_get_week					;#30
-	dw		rtc_get_ascii_sec				;#31
-	dw		rtc_get_ascii_min				;#32
-	dw		rtc_get_ascii_hour				;#33
-	dw		rtc_get_ascii_day				;#34
-	dw		rtc_get_ascii_month				;#35
-	dw		rtc_get_ascii_year				;#36
-	dw		rtc_get_ascii_century			;#37
-	dw		rtc_get_ascii_week				;#38
-	dw		_interrupt_execve				;#39
 
 _interrupt_vga_clear_screen:
 ;in: 
@@ -197,8 +161,7 @@ _interrupt_vga_clear_screen:
 ;	  dx = 0x03D5
 	push	KERNEL_SEGMENT
 	pop		ds
-	call	vga_clear_screen
-	retn
+	jmp		vga_clear_screen
 
 _interrupt_pit_set_frequency:
 ;in:  ax = frequency
@@ -206,8 +169,7 @@ _interrupt_pit_set_frequency:
 ;	  bx = KERNEL_SEGMENT
 	push	KERNEL_SEGMENT
 	pop		ds
-	call	pit_set_frequency
-	retn
+	jmp		pit_set_frequency
 
 _interrupt_pit_get_frequency:
 ;in:
@@ -226,8 +188,7 @@ _interrupt_vga_cursor_move:
 	push	KERNEL_SEGMENT
 	pop		ds
 	mov		word[vga_pos_cursor],	cx
-	call	vga_cursor_move
-	retn
+	jmp		vga_cursor_move
 
 _interrupt_tty_putchar_ascii:
 ;in:  al = ASCII
@@ -252,10 +213,29 @@ _interrupt_tty_putchar_ascii:
 	pop		ds
 	mov		ah,		byte[vga_color] ;ax vga_char now
 	mov		bx,		word[vga_pos_cursor]
+
+	pusha
+	mov		ax,		word[vga_pos_cursor]
+	sub		ax,		3840
+	jle		.exit_positioning
+	call	vga_positioning_to_bottom
+.exit_positioning:
+	popa
+
+	mov		bx,		word[vga_pos_cursor]
 	mov		word[es:bx],	ax
-	add		bx,		VGA_CHAR_SIZE
-	mov		word[vga_pos_cursor], bx
-	call	vga_cursor_move.without_get_pos_cursor_with_div
+	add		word[vga_pos_cursor],	2
+	add		word[tty_input_end],	2
+	call	vga_cursor_move
+
+	mov		ax,		word[vga_memory_size]
+	sub		ax,		160
+	cmp		word[vga_pos_cursor],	ax
+	jle		.not_free
+	pusha
+	call	vga_free_top_line
+	popa
+.not_free:
 	pop		ds
 .end:
 	retn
@@ -306,7 +286,6 @@ _interrupt_tty_print_ascii_c:
 .end:
 	retn
 
-
 _interrupt_tty_next_row:
 ;in:
 ;out: al = bh
@@ -315,8 +294,7 @@ _interrupt_tty_next_row:
 ;need calc the row now, inc and mul to 80 * VGA_CHAR_SIZE
 	push	KERNEL_SEGMENT
 	pop		ds
-	call	tty_next_row
-	retn
+	jmp		tty_next_row
 
 KB_EMPTY equ 0x00	;this scancode don't used in XT set
 _interrupt_get_keyboard_input:
@@ -324,8 +302,7 @@ _interrupt_get_keyboard_input:
 ;out: al = 0 if buffer empty, else scancode
 	push	KERNEL_SEGMENT
 	pop		ds
-	call	pop_kb_buf
-	retn
+	jmp		pop_kb_buf
 
 _interrupt_scancode_to_ascii:
 ;in:  al = scancode
@@ -333,8 +310,7 @@ _interrupt_scancode_to_ascii:
 ;	  bx = al
 	push	KERNEL_SEGMENT
 	pop		ds
-	call	scancode_to_ascii
-	retn
+	jmp		scancode_to_ascii
 
 _interrupt_int_to_ascii:
 ;in:  ax = int
@@ -346,8 +322,7 @@ _interrupt_int_to_ascii:
 ;	  dx = high sign in int
 	push	KERNEL_SEGMENT
 	pop		ds
-	call	int_to_ascii
-	retn
+	jmp		int_to_ascii
 
 _interrupt_uint_to_ascii:
 ;in:  ax = uint
@@ -417,8 +392,7 @@ _interrupt_rand_int:
 ;	  bx = KERNEL_SEGMENT
 	push	KERNEL_SEGMENT
 	pop		ds
-	call	rand_int
-	retn
+	jmp		rand_int
 
 _interrupt_set_rand_seed:
 ;in:  ax = seed

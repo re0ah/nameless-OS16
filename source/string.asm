@@ -76,7 +76,6 @@ uint_to_ascii:
 	jne		.lp2
 	sub		si,		cx	;si = start of str
 	retn
-num_to_ascii_buf times 6 db " "
 
 str_to_fat12_filename:
 ;in:  si = str (in format name.ext or name (in this case will add BIN as ext))
@@ -125,12 +124,6 @@ str_to_fat12_filename:
 	call	str_to_caps
 	pop		ds
 	retn
-
-FAT12_STR times 11 db ' '
-	FAT12_STRLEN equ $-FAT12_STR
-	FAT12_STRLEN_WITHOUT_EXT equ FAT12_STRLEN - 3
-	FAT12_EXT equ FAT12_STR + 8
-FAT12_STR_ONLY_BIN db "BIN" ;READ ONLY!
 
 str_to_caps:
 ;in:  si = str
@@ -196,3 +189,16 @@ scancode_to_ascii:
 	xor		al,		al
 .caps_not_set:
 	retn
+
+;cstr_to_uint:
+;in: si = C str
+;    
+;	movzx   cx,     byte[ss:bp]
+;	sub     cx,     0x30
+;	imul    cx,     di
+;	imul    di,     10
+;	add     bx,     cx
+;	dec     bp
+;	dec     al
+;	test    al,     al
+;	jne     .str_to_uint
