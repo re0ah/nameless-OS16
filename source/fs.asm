@@ -149,32 +149,43 @@ START_USER_DATA equ START_OF_ROOT + SECTORS_TO_ROOT_DIR ;33
 ;	pop		es
 ;	retn
 
+fat12_read:
+;in: ax = logic sector
+;	 es:bx = place
+;	 cl = how many clusters to read
+	pusha
+	push	cx
+
+	call	l2hts
+
+;	mov		ah,		0x02	;AH: BIOS function read sectors from drive
+;	mov		al,		0x09	;AL: Sectors To Read Count
+	pop		ax
+	mov		ah,		0x02	;BIOS read
+							;CH		Cylinder
+							;CL		Sector
+							;DH		Head
+							;DL		Drive
+	;Results CF Set On Error, Clear If No Error
+;	stc
+	int		0x13
+
+	popa
+	retn
+
 fat12_read_root:
 ;read fat12 root in DISK_BUFFER
 ;in:
 ;out: ah = return code BIOS int
 ;	  al = actual sectors read count
 ;	  bx = 0
-;	  dx = ???
-;	  ??? I don't know what's registers change read BIOS call
-	push	es
-;logic sector to physical
 	mov		ax,		START_OF_ROOT
-	call	l2hts
-
-	;https://en.wikipedia.org/wiki/INT_13H
-;	mov		ah,		0x02			;AH: BIOS function read sectors from drive
-;	mov		al,		14				;AL		Sectors To Read Count
-	mov		ax,		0x020E
-									;CH		Cylinder
-									;CL		Sector
-									;DH		Head
-									;DL		Drive
-	push	DISK_BUFFER				;ES:BX	Buffer Address Pointer
-	pop		es
 	xor		bx,		bx
-									;Results CF Set On Error, Clear If No Error
-	int		0x13
+	mov		cl,		0x02
+	push	es
+	push	DISK_BUFFER
+	pop		es
+	call	fat12_read
 	pop		es
 	retn
 
@@ -184,7 +195,9 @@ fat12_file_size:
 ;	  not found: ax = FAT12_ENTRY_NOT_FOUND
 	call	fat12_find_entry
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
-	je		fat12_file_entry_size.end
+	jne     fat12_file_entry_size
+.not_found:
+	retn
 
 fat12_file_entry_size:
 ;in:  DISK_BUFFER:ax = ptr on fat12 entry
@@ -210,8 +223,8 @@ fat12_find_entry:
 ;				 di = ROOT_DIR_SIZE
 ;				 bx = si
 ;				 si = bx + FAT12_FULLNAME_SIZE
-	push	es
 	call	fat12_read_root
+	push	es
 	push	DISK_BUFFER
 	pop		es
 ;on disk buffer root now, check all root before entry doesn't found
@@ -235,37 +248,19 @@ fat12_find_entry:
 	retn
 
 fat12_read_fat:
-;in:  ds:si - name of file
-;out: ah = return code BIOS int
-;	  al = actual sectors read count
-;	  bx = ???
-;	  dx = ???
-;	  ??? I don't know what's registers change read BIOS call
+	mov		ax,		0x0001	;1st sector of 1st FAT
+	xor		bx,		bx
+	mov		cl,		0x09
 	push	es
 	push	DISK_BUFFER
 	pop		es
-
-	mov		ax,		0x0001	;1st sector of 1st FAT
-	call	l2hts
-;https://en.wikipedia.org/wiki/INT_13H
-;	mov		ah,		0x02	;AH: BIOS function read sectors from drive
-;	mov		al,		0x09	;AL: Sectors To Read Count
-	mov		ax,		0x0209
-							;CH		Cylinder
-							;CL		Sector
-							;DH		Head
-							;DL		Drive
-	xor		bx,		bx
-	;Results CF Set On Error, Clear If No Error
-;	stc
-	int		0x13
-
+	call	fat12_read
 	pop		es
 	retn
 
 fat12_load_entry:
-;in:  DISK_BUFFER:ax = ptr on fat12 entry
-;	  es:si = LOAD PTR
+;in:  DISK_BUFFER:di = ptr on fat12 entry
+;	  es:bx = LOAD PTR
 ;out: ax = bp + 31
 ;	  bx = si / 2
 ;	  cx = ?
@@ -273,59 +268,82 @@ fat12_load_entry:
 ;	  si = pos fat12 element
 ;	  di = where to load data
 ;	  bp = file marker of fat element
-;	  gs = DISK_BUFFER
-	mov		di,		si ;store ptr where to load data
-	mov		bx,		ax ;fat12 entry ptr
+;	  fs = DISK_BUFFER
 	push	DISK_BUFFER
-	pop		gs
-	mov		bp,		word[gs:bx + 26] ;1st cluster (26st byte from
+	pop		fs
+	mov		si,		word[fs:di + 26] ;1st cluster (26st byte from
 										;start of entry)
 									 ;store cluster number
-	pusha
-	call	fat12_read_fat
-	popa
+	push	word[fs:di + 28]	;file size
+	call	fat12_get_file_clusters_list
+	mov		si,		fat12_write_file_free_clusters
+.reading_file_data:
+	lodsw
+	test	ax,		ax
+	je		.exit
+	mov		cl,		1
+	call	fat12_read
+	add		bx,		512
+	jmp		.reading_file_data
+.exit:
+	pop		cx	;file size
+	retn
+
+fat12_get_file_clusters_list:
 ;FAT cluster 0 = media descriptor = 0F0h
 ;FAT cluster 1 = filler cluster = 0FFh
 ;Cluster start = ((cluster number) - 2) * SectorsPerCluster + START_USER_DATA
 ;              = (cluster number) + 31
-;load FAT from disk
+	pusha
+	call	fat12_read_fat
+	push	es
+	push	KERNEL_SEGMENT
+	pop		es
+	mov		di,		fat12_write_file_free_clusters
 .load_file_sector:
-	lea		ax,		[bp + 31]
-	call	l2hts
-	mov		bx,		di
-	mov		ax,		0x0201
-	stc
-	int		0x13
+	lea		ax,		[si + 31]
+	stosw
+	push	di
+	call	calculate_next_cluster
+	pop		di
+	jnae	.load_file_sector
+.exit:
+	mov		word[es:di],	0
+	pop		es
+	popa
+	retn
 
-	jnc		.calculate_next_cluster
-
-	call	reset_floppy		;reset floppy and retry
-	jmp		.load_file_sector
-.calculate_next_cluster:
+calculate_next_cluster:
 ;FAT12 element 12 bit long. Need mul to 1.5
-	mov		si,		bp
-	mov		bx,		si
-	shr		bx,		1
-	mov		bp,		word[gs:si + bx]
+	mov		ax,		si
+	mov		di,		ax
+	shr		di,		1
+	add		di,		ax
+	mov		si,		word[fs:di]
 
-	test	si,		1
+	test	al,		1
 	jz		.even
 .odd:
-	shr		bp,		4		;shift first 4 bits (they belong to another entry)
+	shr		si,		4		;shift first 4 bits (they belong to another entry)
 .even:
-	and		bp,		0x0FFF
+	and		si,		0x0FFF
 .next_cluster_cont:
-	cmp		bp,		0x0FF8		;0xFF8..0xFFF = end of file marker in FAT12
-	jae		.exit
+	cmp		si,		0x0FF8		;0xFF8..0xFFF = end of file marker in FAT12
+	retn
 
-	add		di,		BYTES_PER_SECTOR
-	jmp		.load_file_sector
-.exit:
+fat12_write_root:
+;in: es = DISK_BUFFER, has changed root dir for save
+	mov		ax,		START_OF_ROOT
+	call	l2hts
+
+	xor		bx,		bx
+	mov		ax,		0x030E	;write 14 entries
+	int		0x13
 	retn
 
 fat12_rename_file:
-;in:  si = filename
-;out: di = new filename
+;in:  ds:si = filename
+;out: ds:di = new filename
 	push	es
 	push	di
 	push	si
@@ -338,12 +356,27 @@ fat12_rename_file:
 	mov		cx,		11
 	rep		movsb
 
-	mov		ax,		START_OF_ROOT
-	call	l2hts
+	call	fat12_write_root
+	pop		es
+	retn
 
-	xor		bx,		bx
-	mov		ax,		0x030E	;write 14 entries
-	int		0x13
+fat12_find_free_entry:
+	push	es
+	push	DISK_BUFFER
+	pop		es
+	call	fat12_read_root
+	xor		di,		di
+.next_entry:
+	mov		al,		byte[es:di]
+	test	al,		al
+	je		.found_free_entry
+	cmp		al,		0xE5
+	je		.found_free_entry
+	add		di,		DIR_ENTRY_SIZE
+	cmp		di,		DIR_ENTRY_SIZE * NUM_OF_ENTRIES_ROOT_DIR
+	jne		.next_entry
+;root is full
+.found_free_entry:
 	pop		es
 	retn
 
@@ -355,20 +388,13 @@ fat12_create_entry:
 	push	es
 	push	cx
 	push	ax
-	call	fat12_read_root
 	push	DISK_BUFFER
 	pop		es
-	xor		di,		di
-	mov		cx,		224
-.next_entry:
-	mov		al,		byte[es:di]
-	test	al,		al
-	je		.found_free_entry
-	cmp		al,		0xE5
-	je		.found_free_entry
-	add		di,		32
-	loop	.next_entry
-;root is full
+
+	call	fat12_find_free_entry
+	cmp		di,		DIR_ENTRY_SIZE * NUM_OF_ENTRIES_ROOT_DIR
+	jne		.found_free_entry
+
 	pop		ax
 	pop		cx
 	pop		es
@@ -381,7 +407,7 @@ fat12_create_entry:
 	mov		cx,		21
 	rep		stosb
 
-	sub		di,		32
+	sub		di,		DIR_ENTRY_SIZE
 	pop		ax
 	mov		word[es:di + 26],	ax	;cluster location
 	pop		cx
@@ -389,16 +415,7 @@ fat12_create_entry:
 	call	fat12_set_time_now_entry
 	call	fat12_set_date_now_entry
 
-	mov		ax,		START_OF_ROOT
-	call	l2hts
-
-	push	DISK_BUFFER
-	pop		es
-	xor		bx,		bx
-
-	mov		ax,		0x030E	;write 14 entries
-
-	int		0x13
+	call	fat12_write_root
 	pop		es
 	retn
 
@@ -407,9 +424,10 @@ fat12_load_file:
 ;	 es:di = ptr to load
 	push	di
 	call	fat12_find_entry
-	pop		si
+	pop		bx
 	cmp		ax,		FAT12_ENTRY_NOT_FOUND
 	je		.end
+	mov		di,		ax
 	call	fat12_load_entry
 .end:
 	retn
@@ -483,29 +501,152 @@ fat12_set_date_now_entry:
 	mov		word[es:di + 16],	ax
 	retn
 
-reset_floppy:
-;in: [bootdev] = boot device;
-;out: carry set on error
-	push	ax
-	push	dx
-	xor		ax,		ax
-	xor		dx,		dx
-	stc
-	int		0x13
-	pop		dx
-	pop		ax
+fat12_find_free_cluster:
+	mov		di,		3
+	mov		bx,		2
+	mov		cx,		word[fat12_write_file_clusters_needed]
+	mov		si,		fat12_write_file_free_clusters
+.next_cluster:
+	mov		ax,		word[es:di]
+	add		di,		2
+	and		ax,		0x0FFF			; Mask out for even
+	jnz		.more_odd ; Free entry?
+.found_free_even:
+	call	.save_cluster
+.more_odd:
+	inc		bx				; If not, bump our counter
+
+	mov		ax,		word[es:di - 1]
+	inc		di
+	shr		ax,		4			; Shift for odd
+	test	ax,		ax
+	jnz		.more_even
+.found_free_odd:
+	call	.save_cluster
+.more_even:
+	inc		bx				; If not, keep going
+	jmp		.next_cluster
+
+.save_cluster: ;this is function!
+	mov		word[si],	bx
+	add		si,		2
+
+	dec		cx
+	jcxz	.finished_list_free
+	retn
+.finished_list_free:
+	pop		ax		;free return address
 	retn
 
-fat12_write_file:
-;in:  si = filename
-;	  bx = data location
-;	  cx = data size
-;out:
+fat12_fill_fat12_table:
+	mov		word[fat12_write_file_count],	1		; General cluster counter
+	mov		si,		fat12_write_file_free_clusters			; .free_clusters ptr
+.next_cluster:
+	lodsw
+	; Find out if it's an odd or even cluster
+	mov		di,		ax
+	shr		di,		1
+	add		di,		ax
+
+	mov		cx,		word[es:di]
+
+	mov		bx,		word[fat12_write_file_count]		; Is this the last cluster?
+	cmp		bx,		word[fat12_write_file_clusters_needed]
+	je		.last_cluster
+
+	mov		bx, 	word[si]		; Get number of NEXT cluster
+	test	al,		1
+	jz		.even
+.odd:
+	and		cx,		0x000F			; Zero out bits we want to use
+	shl		bx,		4			; And convert it into right format for FAT
+	jmp		.store_cluster_in_fat
+.even:
+	and     cx,     0xF000          ; Zero out bits we want to use
+.store_cluster_in_fat:
+	add     cx,     bx
+	mov     word[es:di], cx     ; Store cluster data back in FAT copy in RA    M
+	inc     word[fat12_write_file_count]
+	jmp     .next_cluster
+
+.last_cluster:
+	or		dx,		dx
+	test	dx,		1
+	jz		.even_last
+.odd_last:
+	and		cx,		0x000F			; Set relevant parts to FF8h (last cluster in file)
+	add		cx,		0xFF80
+	mov		word[es:di],	cx
+	retn
+.even_last:
+	and		cx,		0xF000			; Same as above, but for an even cluster
+	add		cx,		0x0FF8
+	mov		word[es:di],	cx
+	retn
+
+fat12_write_fat:
+	pusha
+	mov		ax,		1			; FAT starts at logical sector 1 (after boot sector)
+	call	l2hts
+
+	xor		bx,		bx
+	mov		ax,		0x0309	;write 9 sectors to first FAT
+	int		0x13		; Write sectors
+	popa				; And restore from start of system call
+	retn
+
+fat12_save_data_to_disk:
+	mov		bx,		word[fat12_write_file_location]
+	mov		si,		fat12_write_file_free_clusters
+.next_cluster:
+	lodsw
+
+	test	ax,		ax
+	jne		.continue
+	retn
+.continue:
+	pusha
+	add		ax,		31
+
+	call	l2hts
+
 	push	es
+	push	fs
+	pop		es
+	mov		ax,		0x0301	;write 1 sector
+	int		0x13
+	pop		es
+	popa
+
+	add		bx,		512
+	jmp		.next_cluster
+
+fat12_calc_clusters_needed:
+	xor		dx,		dx
+	div		word[sector_size]
+	test	dx,		dx
+	je		.aliquot
+.not_aliquot:
+	inc		ax
+.aliquot:
+	retn
+
+fat12_create_file:
+;in:  ds:si = filename
+;	  fs:bx = data location
+;	  ds:cx = data size
+;out:
+	test	cx,		cx
+	je		.exit
 	mov		word[fat12_write_file_filename],	si
 	mov		word[fat12_write_file_location],	bx
 	mov		word[fat12_write_file_size],	cx
 
+	call	fat12_find_entry
+	cmp		ax,		FAT12_ENTRY_NOT_FOUND
+	jne		.exit
+.without_saving_data:
+	push	es
 ;es = ds
 	push	ds
 	pop		es
@@ -518,211 +659,157 @@ fat12_write_file:
 	push	DISK_BUFFER
 	pop		es
 
-;how many 512 byte clusters are needed
 	mov		ax,		word[fat12_write_file_size]
-	xor		dx,		dx
-	div		word[sector_size]
-	test	dx,		dx
-	je		.aliquot
-.not_aliquot:
-	inc		ax
-.aliquot:
+	call	fat12_calc_clusters_needed
 	mov		word[fat12_write_file_clusters_needed], ax
 
 	call	fat12_read_fat
-	mov		si,		3		;skipping first two clusters
 
-	mov		bx,		2		;Current cluster counter
-	mov		cx,		word[fat12_write_file_clusters_needed]
-	xor		dx,		dx			;offset in .free_clusters list
-.find_free_cluster:
-	mov		ax,		word[es:si]
-	add		si,		2
-	and		ax,		0x0FFF			; Mask out for even
-	jz		.found_free_even		; Free entry?
+	call	fat12_find_free_cluster
 
-.more_odd:
-	inc		bx				; If not, bump our counter
+	call	fat12_fill_fat12_table
 
-	mov		ax,		word[es:si - 1]
-	inc		si
-	shr		ax,		4			; Shift for odd
-	test	ax,		ax			; Free entry?
-	je		.found_free_odd
-
-.more_even:
-	inc		bx				; If not, keep going
-	jmp		.find_free_cluster
-
-.found_free_even:
-	push	si
-	mov		si,		fat12_write_file_free_clusters		; Store cluster
-	add		si,		dx
-	mov		word[ds:si],	bx
-	pop		si
-
-	dec		cx				; Got all the clusters we need?
-	jcxz	.finished_list
-
-	add		dx,		2
-	jmp		.more_odd
-
-.found_free_odd:
-	push	si
-	mov		si,		fat12_write_file_free_clusters		; Store cluster
-	add		si,		dx
-	mov		word[ds:si],	bx
-	pop		si
-
-	dec		cx
-	jcxz	.finished_list
-
-	add		dx,		2
-	jmp		.more_even
-
-.finished_list:
-
-	; Now the .free_clusters table contains a series of numbers (words)
-	; that correspond to free clusters on the disk; the next job is to
-	; create a cluster chain in the FAT for our file
-
-	mov		si,		word[fat12_write_file_filename]
-	mov		ax,		word[fat12_write_file_free_clusters]	;get first free cluster
-	mov		cx,		word[fat12_write_file_size]
-	call	fat12_create_entry
-
-	xor		cx,		cx			; .free_clusters offset counter
-	mov		word[fat12_write_file_count],	1		; General cluster counter
-.chain_loop:
-	mov		ax,		word[fat12_write_file_count]		; Is this the last cluster?
-	cmp		ax,		word[fat12_write_file_clusters_needed]
-	je		.last_cluster
-
-	mov		di,		fat12_write_file_free_clusters
-
-	add		di,		cx
-	mov		bx,		word[ds:di]		; Get cluster
-
-	mov		ax,		bx			; Find out if it's an odd or even cluster
-	xor		dx,		dx
-	mov		bx,		3
-	mul		bx
-	mov		bx,		2
-	div		bx				; DX = [.cluster] mod 2
-	;mov si, disk_buffer
-	mov		si,		ax			; AX = word in FAT for the 12 bit entry
-	mov		ax,		word[es:si]
-
-	or		dx,		dx			; If DX = 0, [.cluster] = even; if DX = 1 then odd
-	jz		.even
-
-.odd:
-	and		ax,		0x000F			; Zero out bits we want to use
-	mov		di,		fat12_write_file_free_clusters
-	add		di,		cx			; Get offset in .free_clusters
-	mov		bx, 	word[ds:di + 2]		; Get number of NEXT cluster
-	shl		bx,		4			; And convert it into right format for FAT
-	add		ax,		bx
-
-	mov		word[es:si],	ax		; Store cluster data back in FAT copy in RAM
-
-	inc		word[fat12_write_file_count]
-	add		cx,		2
-
-	jmp		.chain_loop
-.even:
-	and		ax,		0xF000			; Zero out bits we want to use
-	mov		di,		fat12_write_file_free_clusters
-	add		di,		cx			; Get offset in .free_clusters
-	mov		bx,		word[ds:di + 2]		; Get number of NEXT free cluster
-
-	add		ax,		bx
-
-	mov		word[es:si], ax		; Store cluster data back in FAT copy in RAM
-
-	inc		word[fat12_write_file_count]
-	add		cx,		2
-
-	jmp		.chain_loop
-
-.last_cluster:
-	mov		di,		fat12_write_file_free_clusters
-	add		di,		cx
-	mov		bx,		word[di]		; Get cluster
-
-	mov		ax,		bx
-
-	xor		dx,		dx
-	mov		bx,		3
-	mul		bx
-	mov		bx,		2
-	div		bx				; DX = [.cluster] mod 2
-	;mov si, disk_buffer
-	mov		si,		ax			; AX = word in FAT for the 12 bit entry
-	mov		ax,		word[es:si]
-
-	test	dx,		dx			; If DX = 0, [.cluster] = even; if DX = 1 then odd
-	je		.even_last
-
-.odd_last:
-	and		ax,		0x000F			; Set relevant parts to FF8h (last cluster in file)
-	add		ax,		0xFF80
-	jmp		.finito
-
-.even_last:
-	and		ax,		0xF000			; Same as above, but for an even cluster
-	add		ax,		0x0FF8
-.finito:
-	mov		word[es:si],	ax
-
-	pusha
-	mov		ax,		1			; FAT starts at logical sector 1 (after boot sector)
-	call	l2hts
-
-	xor		bx,		bx
-
-	mov		ax,		0x0309	;write 9 sectors to first FAT
-
-	int		0x13		; Write sectors
-	popa				; And restore from start of system call
-
-	; Now it's time to head back to the root directory, find our
-	; entry and update it with the cluster in use and file size
-	
+	call	fat12_write_fat
 	pop		es
-	; Now it's time to save the sectors to disk!
+	call	fat12_save_data_to_disk
 
-	xor		cx,		cx
+	mov     si,     word[fat12_write_file_filename]
+	mov     ax,     word[fat12_write_file_free_clusters]    ;get first free cluster
+	mov     cx,     word[fat12_write_file_size]
+	jmp		fat12_create_entry
 
-.save_loop:
-	mov		di,		fat12_write_file_free_clusters
-	add		di,		cx
-	mov		ax,		word[ds:di]
+.exit:
+	retn
 
-	test	ax,		ax
-	je		.write_root_entry
+fat12_write_file:
+;in: ds:si = filename
+;	 fs:bx = data location
+;	 ds:cx = data size
+	mov		word[fat12_write_file_filename],	si
+	mov		word[fat12_write_file_location],	bx
+	mov		word[fat12_write_file_size],	cx
 
-	pusha
-	add		ax,		31
-
-	call	l2hts
-
+	call	fat12_find_entry
+	cmp		ax,		FAT12_ENTRY_NOT_FOUND
+	je      fat12_create_file.without_saving_data
 	push	es
-	push	KERNEL_SEGMENT
+;es = ds
+	push	ds
 	pop		es
-	mov		bx,		word[ds:fat12_write_file_location]
+;zeroing array
+	mov		di,		fat12_write_file_free_clusters
+	xor		ax,		ax
+	mov		cx,		128
+	rep		stosw	;word[es:di] = ax
+;es = DISK_BUFFER
+	push	DISK_BUFFER
+	pop		es
 
-	mov		ax,		0x0301	;write 1 sector
-	int		0x13
+	mov		ax,		word[fat12_write_file_size]
+	call	fat12_calc_clusters_needed
+	mov		word[fat12_write_file_clusters_needed], ax
+
+	call	fat12_read_fat
+
+	call	fat12_find_free_cluster
+
+	call	fat12_fill_fat12_table
+
+	call	fat12_write_fat
 	pop		es
+	call	fat12_save_data_to_disk
+
+.exit:
+	retn
+
+fat12_copy_file:
+;in:  ds:si = copy file filename
+;	  ds:di = new file filename
+;out:
+	mov		word[fat12_write_file_filename],	di
+
+	push	fs
+	push	es
+	push	DISK_BUFFER + 0x8000 ;half of disk_buffer, only 32 KiB...
+	pop		es
+	xor		di,		di
+	call	fat12_load_file
+	cmp		ax,		FAT12_ENTRY_NOT_FOUND
+	je		.exit
+	xor		bx,		bx
+	mov		si,		word[fat12_write_file_filename]
+	pop		es
+	push	DISK_BUFFER + 0x8000
+	pop		fs
+	call	fat12_create_file
+.exit:
+	pop		fs
+	retn
+
+fat12_remove_file:
+;in: ds:si = name of file
+	call	fat12_find_entry
+	mov		di,		ax
+	cmp		ax,		FAT12_ENTRY_NOT_FOUND
+	jne		fat12_remove_entry
+.end:
+	retn
+
+fat12_remove_entry:
+;in:  DISK_BUFFER:di = ptr on fat12 entry
+;	  es:bx = LOAD PTR
+;out: ax = bp + 31
+;	  bx = si / 2
+;	  cx = ?
+;	  dx = dl = 0, dh = ?
+;	  si = pos fat12 element
+;	  di = where to load data
+;	  bp = file marker of fat element
+;	  gs = DISK_BUFFER
+	push	fs
+	push	es
+	push	DISK_BUFFER
+	pop		es
+	push	es
+	pop		fs
+	mov		si,		word[es:di + 26] ;1st cluster (26st byte from
+										;start of entry)
+									 ;store cluster number
+;clear entry data from root directory
+;	xor		ax,		ax
+;	mov		cx,		32
+;	rep		stosw
+;move entres data for clear entry data
+	pusha
+	push	ds
+	push	es
+	pop		ds
+	lea		si,		[di + 32]
+	mov		cx,		2048
+	rep		movsw
+	pop		ds
+	call	fat12_write_root
 	popa
 
-	add		word[ds:fat12_write_file_location], 512
-	add		cx,		2
-	jmp		.save_loop
-
-.write_root_entry:
-
+	pusha
+	call	fat12_read_fat
+	popa
+;FAT cluster 0 = media descriptor = 0F0h
+;FAT cluster 1 = filler cluster = 0FFh
+;Cluster start = ((cluster number) - 2) * SectorsPerCluster + START_USER_DATA
+;              = (cluster number) + 31
+;load FAT from disk
+.zeroing_file_sector:
+	lea		ax,		[si + 31]
+	call	calculate_next_cluster
+	mov		word[es:di],	0
+	jae		.exit
+	jmp		.zeroing_file_sector
+.exit:
+	xor		bx,		bx
+	call	fat12_write_fat
+	pop		es
+	pop		fs
 	retn
 
 l2hts:
@@ -755,3 +842,17 @@ l2hts:
 
 	pop		si
 	retn
+
+reset_floppy:
+;in: [bootdev] = boot device;
+;out: carry set on error
+	push	ax
+	push	dx
+	xor		ax,		ax
+	xor		dx,		dx
+	stc
+	int		0x13
+	pop		dx
+	pop		ax
+	retn
+

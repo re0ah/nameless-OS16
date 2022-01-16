@@ -40,7 +40,7 @@ bits 16
 ;|---------------|0x80000
 ;|     STACK     | 		 64KiB
 ;|---------------|0x70000
-;|  DISK BUFFER  |
+;|  DISK BUFFER  |       64KiB
 ;|---------------|0x60000
 ;|      USER     |
 ;|---------------|0x00500 + KERNEL_SIZE
@@ -75,6 +75,18 @@ kernel:
 	call	serial_init
 	call	vga_init
 
+	mov		si,		testfrom
+	mov		di,		testto
+	call	fat12_copy_file
+
+	mov		si,		testfrom
+;	call	fat12_remove_file
+
+	mov		si,		testto2
+	mov		bx,		testfrom
+	mov		cx,		11
+;	call	fat12_write_file
+
 ;	push	es
 
 ;	push	ds
@@ -82,24 +94,34 @@ kernel:
 ;	mov		si,		testfrom
 ;	mov		di,		test_data_file
 ;	call	fat12_load_file
-
+;
 ;	pop		es
-
+;
 ;	mov		si,		testto
 ;	mov		bx,		test_data_file
 ;	mov		cx,		TEST_DATA_FILE_SIZE
-;	call	fat12_write_file
+;	push	ds
+;	pop		fs
+;	call	fat12_create_file
+;	mov		si,		testto2
+;	mov		bx,		test_data_file
+;	mov		cx,		1
+;	call	fat12_create_file
+;	mov		si,		testto2
+;	mov		di,		testto3
+;	call	fat12_rename_file
 .to_tty:
 	call	tty_start
 	jmp		0xFFFF:0000 ;reboot
 
-;testfrom db "SNAKE   BIN"
-;testto db "TESTTO  BIN"
+testfrom db "SNAKE   BIN"
+testto db "TESTTO  BIN"
+testto2 db "TESTTESTBIN"
+testto3 db "RENAMED BIN"
 
-;test_data_file times 1024 db 0
-;	TEST_DATA_FILE_SIZE equ $ - test_data_file
+test_data_file times 1024 db 0
+	TEST_DATA_FILE_SIZE equ $ - test_data_file
 
-last_exit_status dw 0
 execve:
 ;in: ds:si = name of file
 ;	 ss:bp = args
@@ -148,11 +170,14 @@ return_from_function:
 
 ;.data segment
 ;vga
+vga_space:
+		  db 0x20
 vga_color db 0x07 ;bg: black, fg: gray
+
 vga_bytes_in_row db 160
 
 ;tty
-HELLO_MSG db "namelessOS16 v 8", 0x0A, 0x00
+HELLO_MSG db "namelessOS16 v 9", 0x0A, 0x00
 HELLO_MSG_SIZE equ $-HELLO_MSG
 
 PROGRAM_NOT_FOUND db 0x0A, "program not found", 0x00
@@ -183,22 +208,23 @@ syscall_jump_table:
     dw      fat12_load_entry                ;#10
     dw      fat12_file_size                 ;#11
     dw      fat12_file_entry_size           ;#12
-    dw      _interrupt_pit_set_frequency    ;#13
-    dw      _interrupt_pit_get_frequency    ;#14
-    dw      _interrupt_get_keyboard_input   ;#15
-    dw      _interrupt_scancode_to_ascii    ;#16
-    dw      _interrupt_int_to_ascii         ;#17
-    dw      _interrupt_uint_to_ascii        ;#18
-    dw      _interrupt_set_pit_int          ;#19
-    dw      _interrupt_set_keyboard_int     ;#20
-    dw      _interrupt_rand_int             ;#21
-    dw      _interrupt_set_rand_seed        ;#22
-    dw      rtc_get_data_bcd                ;#23
-    dw      rtc_get_data_bin                ;#24
-    dw      bcd_to_number                   ;#25
-    dw      set_timezone_utc                ;#26
-    dw      get_timezone_utc                ;#27
-    dw      _interrupt_execve               ;#28
+    dw      fat12_create_file               ;#13
+    dw      _interrupt_pit_set_frequency    ;#14
+    dw      _interrupt_pit_get_frequency    ;#15
+    dw      _interrupt_get_keyboard_input   ;#16
+    dw      _interrupt_scancode_to_ascii    ;#17
+    dw      _interrupt_int_to_ascii         ;#18
+    dw      _interrupt_uint_to_ascii        ;#19
+    dw      _interrupt_set_pit_int          ;#20
+    dw      _interrupt_set_keyboard_int     ;#21
+    dw      _interrupt_rand_int             ;#22
+    dw      _interrupt_set_rand_seed        ;#23
+    dw      rtc_get_data_bcd                ;#24
+    dw      rtc_get_data_bin                ;#25
+    dw      bcd_to_number                   ;#26
+    dw      set_timezone_utc                ;#27
+    dw      get_timezone_utc                ;#28
+    dw      _interrupt_execve               ;#29
 
 ;string
 FAT12_STR_ONLY_BIN db "BIN" ;READ ONLY!
@@ -217,9 +243,13 @@ kb_buf_ptr_read  dw kb_buf
 
 BSS_START equ KERNEL_SIZE + 1
 ;.bss segment
+;kernel main
+;last_exit_status dw 0
+last_exit_status equ BSS_START
+
 ;vga
 ;vga_pos_cursor  dw 0
-vga_pos_cursor equ BSS_START
+vga_pos_cursor equ last_exit_status + 2
 ;vga_memory_size dw 0
 vga_memory_size equ vga_pos_cursor + 2
 ;vga_offset_now dw 0
@@ -289,6 +319,6 @@ BSS_SIZE equ kb_shift_pressed + 1
 
 
 
-KERNEL_SIZE equ 3260
+KERNEL_SIZE equ 4481
 BUFFERS_SIZE equ BSS_SIZE
 KERNEL_SIZE_WITH_BUFFER equ KERNEL_SIZE + BUFFERS_SIZE

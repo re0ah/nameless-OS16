@@ -114,9 +114,9 @@ vga_init:
 
 vga_positioning_to_bottom:
 ;out: ax = ((word[vga_pos_cursor] - 3840) // 160 * 80) & 0x00FF
+;	  bx = (word[vga_pos_cursor] - 3840) // 160 * 80
 ;	  dx = 0x03D5
 ;	  word[vga_offset_now] = offset from IN ax
-;	  bl = 80
 	mov		ax,     word[vga_pos_cursor]
 	sub		ax,     3840
 	div     byte[vga_bytes_in_row]
@@ -164,8 +164,9 @@ vga_clear_screen:
 ;	  dx = 0x03D5
 ;	  word[vga_pos_cursor] = 0
 ;	  word[vga_offset_now] = 0
-	mov		ah,		byte[vga_color]
-	mov		al,		' '
+	mov		ax,		word[vga_space]
+;	mov		ah,		byte[vga_color]
+;	mov		al,		' '
 ;fill with ax first page of VGA_BUFFER
 	xor		di,		di
 	mov		word[vga_pos_cursor], di
@@ -200,22 +201,22 @@ vga_line_down:
 ;	  		if byte[kb_shift_pressed] == 1:
 ;				ax = 2000 =>
 ;				if (((word[vga_pos_cursor] - 3840) / 2) <= (2000 + word[vga_offset_now)):
-;					ax = ax = ((word[vga_pos_cursor] - 3840) // 160 * 80) & 0x00FF;
-;					bl = 80;
+;					ax = ((word[vga_pos_cursor] - 3840) // 160 * 80) & 0x00FF;
+;					bx = (word[vga_pos_cursor] - 3840) // 160 * 80;
 ;					word[vga_offset_now] = ((word[vga_pos_cursor] - 3840) // 160 * 80) & 0x00FF;
 ;				else:
 ;					ax = 2000 + word[vga_offset_now];
-;					bx = ((word[vga_pos_cursor] - 3840) / 2) - (2000 + word[vga_offset_now]);
+;					bx = 2000 + word[vga_offset_now];
 ;					word[vga_offset_now] = 2000 + word[vga_offset_now];
 ;	  		else:
 ;				ax = 80 =>
 ;				if (word[vga_offset_now] - 80) <= (80 + word[vga_offset_now]):
-;					ax = ax = ((word[vga_pos_cursor] - 3840) // 160 * 80) & 0x00FF;
-;					bl = 80;
+;					ax = ((word[vga_pos_cursor] - 3840) // 160 * 80) & 0x00FF;
+;					bx = (word[vga_pos_cursor] - 3840) // 160 * 80;
 ;					word[vga_offset_now] = ((word[vga_pos_cursor] - 3840) // 160 * 80) & 0x00FF;
 ;				else:
 ;					ax = 80 + word[vga_offset_now];
-;					bx = ((word[vga_pos_cursor] - 3840) / 2) - (80 + word[vga_offset_now]);
+;					bx = 80 + word[vga_offset_now];
 ;					word[vga_offset_now] = 80 + word[vga_offset_now];
 ;	  		dx = 0x03D5
 
@@ -244,7 +245,7 @@ vga_line_up:
 ;				word[vga_offset_now] -= 2000;
 ;			else:
 ;				ax = 0;
-;				bx = word[vga_offset_now] - 2000;
+;				bx = 0;
 ;				word[vga_offset_now] = 0;
 ;	  else:
 ;			ax = 80 =>
@@ -254,7 +255,7 @@ vga_line_up:
 ;				word[vga_offset_now] -= 80;
 ;			else:
 ;				ax = 0;
-;				bx = word[vga_offset_now] - 80;
+;				bx = 0;
 ;				word[vga_offset_now] = 0;
 ;	  dx = 0x03D5
 
@@ -273,27 +274,27 @@ vga_update_line:
 ;
 ;in:  ax = offset
 ;out: ax = ax & 0x00FF
+;	  bx = ax
 ;	  dx = 0x03D5
 ;	  word[vga_offset_now] = offset from IN ax
 	mov		word[vga_offset_now],   ax
-.without_move_to_vga_offset_now:
+	mov		bx,		ax
+
 	mov		dx,		VGA_CRTC
-	mov		ax,		VGA_CRTC_HIGH_BYTE
-	out		dx,		ax
+	mov		al,		VGA_CRTC_HIGH_BYTE
+	out		dx,		al
 	
 	inc		dx
-	mov		ax,		word[vga_offset_now]
-	shr		ax,		8
-	out		dx,		ax
+	mov		al,		bh
+	out		dx,		al
 	
 	dec		dx
-	mov		ax,		VGA_CRTC_LOW_BYTE
-	out		dx,		ax
+	mov		al,		VGA_CRTC_LOW_BYTE
+	out		dx,		al
 
 	inc		dx
-	mov		ax,		word[vga_offset_now]
-	and		ax,		0x00FF
-	out		dx,		ax
+	mov		al,		bl
+	out		dx,		al
 	retn
 
 vga_cursor_move:

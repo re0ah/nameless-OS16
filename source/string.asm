@@ -167,19 +167,19 @@ scancode_to_ascii:
 ;in:  al = scancode
 ;out: al = 0 if char not printable, else ascii
 ;	  bx = al
+	cmp		al,		0x53
+	ja		.not_printable
 	mov		bl,		byte[kb_shift_pressed]
 	test	bl,		bl
 	je		.if_shift_not_pressed
-	cmp		al,		0x53
-	ja		.not_printable
+.if_shift_pressed:
 	movzx	bx,		al
 	mov		al,		byte[bx + SCANCODE_SET_WITH_SHIFT]
 	call	if_caps
 	jcxz	.caps_not_set
 	jmp		caps_to_char
+
 .if_shift_not_pressed:
-	cmp		al,		0x53
-	ja		.not_printable
 	movzx	bx,		al
 	mov		al,		byte[bx + SCANCODE_SET]
 	call	if_caps
