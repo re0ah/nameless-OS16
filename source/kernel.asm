@@ -75,16 +75,19 @@ kernel:
 	call	serial_init
 	call	vga_init
 
-	mov		si,		testfrom
-	mov		di,		testto
-	call	fat12_copy_file
+;	mov		si,		testfrom
+;	mov		di,		testto
+;	call	fat12_copy_file
 
-	mov		si,		testfrom
+;	mov		si,		testto
 ;	call	fat12_remove_file
 
+	push	ds
+	pop		fs
 	mov		si,		testto2
-	mov		bx,		testfrom
-	mov		cx,		11
+	mov		bx,		testfromdata
+	mov		cx,		8
+	call	fat12_create_file
 ;	call	fat12_write_file
 
 ;	push	es
@@ -107,7 +110,7 @@ kernel:
 ;	mov		bx,		test_data_file
 ;	mov		cx,		1
 ;	call	fat12_create_file
-;	mov		si,		testto2
+;	mov		si,		testfrom
 ;	mov		di,		testto3
 ;	call	fat12_rename_file
 .to_tty:
@@ -118,6 +121,7 @@ testfrom db "SNAKE   BIN"
 testto db "TESTTO  BIN"
 testto2 db "TESTTESTBIN"
 testto3 db "RENAMED BIN"
+testfromdata db 0xBB, 0x00, 0x00, 0xCD, 0x20, 0x31, 0xC0, 0xCB
 
 test_data_file times 1024 db 0
 	TEST_DATA_FILE_SIZE equ $ - test_data_file
@@ -206,25 +210,31 @@ syscall_jump_table:
     dw      fat12_read_root                 ;#8
     dw      fat12_find_entry                ;#9
     dw      fat12_load_entry                ;#10
-    dw      fat12_file_size                 ;#11
-    dw      fat12_file_entry_size           ;#12
-    dw      fat12_create_file               ;#13
-    dw      _interrupt_pit_set_frequency    ;#14
-    dw      _interrupt_pit_get_frequency    ;#15
-    dw      _interrupt_get_keyboard_input   ;#16
-    dw      _interrupt_scancode_to_ascii    ;#17
-    dw      _interrupt_int_to_ascii         ;#18
-    dw      _interrupt_uint_to_ascii        ;#19
-    dw      _interrupt_set_pit_int          ;#20
-    dw      _interrupt_set_keyboard_int     ;#21
-    dw      _interrupt_rand_int             ;#22
-    dw      _interrupt_set_rand_seed        ;#23
-    dw      rtc_get_data_bcd                ;#24
-    dw      rtc_get_data_bin                ;#25
-    dw      bcd_to_number                   ;#26
-    dw      set_timezone_utc                ;#27
-    dw      get_timezone_utc                ;#28
-    dw      _interrupt_execve               ;#29
+    dw      fat12_load_file                 ;#11
+    dw      fat12_file_size                 ;#12
+    dw      fat12_file_entry_size           ;#13
+    dw      fat12_create_file               ;#14
+    dw      fat12_remove_entry              ;#15
+    dw      fat12_remove_file               ;#16
+    dw      fat12_copy_file                 ;#17
+    dw      fat12_rename_file               ;#18
+    dw      fat12_write_file                ;#19
+    dw      _interrupt_pit_set_frequency    ;#20
+    dw      _interrupt_pit_get_frequency    ;#21
+    dw      _interrupt_get_keyboard_input   ;#22
+    dw      _interrupt_scancode_to_ascii    ;#23
+    dw      _interrupt_int_to_ascii         ;#24
+    dw      _interrupt_uint_to_ascii        ;#25
+    dw      _interrupt_set_pit_int          ;#26
+    dw      _interrupt_set_keyboard_int     ;#27
+    dw      _interrupt_rand_int             ;#28
+    dw      _interrupt_set_rand_seed        ;#29
+    dw      rtc_get_data_bcd                ;#30
+    dw      rtc_get_data_bin                ;#31
+    dw      bcd_to_number                   ;#32
+    dw      set_timezone_utc                ;#33
+    dw      get_timezone_utc                ;#34
+    dw      _interrupt_execve               ;#35
 
 ;string
 FAT12_STR_ONLY_BIN db "BIN" ;READ ONLY!
@@ -319,6 +329,6 @@ BSS_SIZE equ kb_shift_pressed + 1
 
 
 
-KERNEL_SIZE equ 4481
+KERNEL_SIZE equ 4495
 BUFFERS_SIZE equ BSS_SIZE
 KERNEL_SIZE_WITH_BUFFER equ KERNEL_SIZE + BUFFERS_SIZE
