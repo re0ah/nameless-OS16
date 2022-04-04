@@ -23,12 +23,9 @@ Killing time. Course work, thesis. Also, having site on django. And this site is
     - [x] Creating files
     - [x] Renaming files
     - [x] Copy files
-    - [ ] Removing files
+    - [x] Removing files
     - [ ] Writing files
     - [ ] Working that all with syscalls
-- [ ] FAT12
-    - [x] Reading files
-    - [ ] Writing files
 - [ ] Keyboard
     - [x] Buffer, interruption
     - [x] OS scancodes
